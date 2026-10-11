@@ -1,0 +1,4 @@
+import type { Job, Checkpoint, Scope } from '../src/core/types';
+export const scope: Scope = { serverId: '1217290220718915654', channelId: '1268995994440302725', serverName: "Dangpa's Art", channelName: 'Original Characters (Miscellaneous)' };
+export function checkpoint(channelId = scope.channelId): Checkpoint { return { channelId, channelName: scope.channelName, offset: 0, pages: 0, messageIds: [], pageFingerprints: [], postCount: 31, coverage: 'pending', terminal: null, failures: [], attempts: 0, nextAttemptAt: 0, error: null, domMessages: 0 }; }
+export function job(): Job { return { id: 'test-job', serverId: scope.serverId, serverName: scope.serverName, mode: 'thumbnail', tryOriginal: false, channels: [checkpoint()], status: 'scanning', resumeStatus: 'scanning', createdAt: '2026-10-09T00:00:00Z', updatedAt: '2026-10-09T00:00:00Z', warnings: [], autoManifest: false, manifestState: 'pending', manifestDownloads: [], apiNextAt: 0, mediaNextAt: 0 }; }

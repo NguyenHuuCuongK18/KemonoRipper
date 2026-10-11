@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Kemono & Pawchive Archive Ripper",
+  "version": "0.4.3",
+  "description": "Save Discord archives and Patreon/Fanbox posts from Kemono and Pawchive in an on-page overlay.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "alarms",
+    "offscreen",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://kemono.cr/*",
+    "https://img.kemono.cr/*",
+    "https://pawchive.pw/*",
+    "https://*.pawchive.pw/*"
+  ],
+  "optional_host_permissions": [
+    "https://*.kemono.cr/*",
+    "https://cdn.discordapp.com/*",
+    "https://media.discordapp.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Archive Ripper"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://kemono.cr/*",
+        "https://pawchive.pw/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "web_accessible_resources": [{ "resources": ["overlay/index.html", "assets/*"], "matches": ["https://kemono.cr/*", "https://pawchive.pw/*"] }],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://kemono.cr https://*.kemono.cr https://pawchive.pw https://*.pawchive.pw https://cdn.discordapp.com https://media.discordapp.net; img-src 'self' blob: data: https://*.kemono.cr https://*.pawchive.pw; style-src 'self';"
+  }
+}

@@ -1,0 +1,41 @@
+import 'fake-indexeddb/auto';
+import { beforeEach, it, expect } from 'vitest';
+import messages from './fixtures/channel-1268995994440302725-0.sanitized.json';
+import { normalizeMessages } from '../src/core/mediaNormalizer';
+import { commitPage, deleteLocalRecords, getArchiveJobsForDownload, getJob, getJobSummaries, getMedia, getMediaForDownload, hasActiveJobs, saveJob, saveJobAndMedia, saveMedia, saveMediaRecords } from '../src/storage/database';
+import { job, scope } from './helpers';
+beforeEach(() => deleteLocalRecords());
+it('commits media with its checkpoint and retains completed download state', async () => {
+  const archive = job(); const records = normalizeMessages(messages, scope, archive.id);
+  archive.channels[0].offset = 150; await commitPage(archive, records);
+  expect((await getJob(archive.id))?.channels[0].offset).toBe(150); expect(await getMedia(archive.id)).toHaveLength(57);
+  const record = records[0]; record.status = 'downloaded'; record.downloadId = 42; await saveMedia(record);
+  expect((await getMedia(archive.id)).find(r => r.id === record.id)?.downloadId).toBe(42);
+  const other = { ...archive, id: 'another-job' }; await commitPage(other, records.map(r => ({ ...r, jobId: other.id })));
+  expect(await getMedia(other.id)).toHaveLength(57); expect(await getMedia(archive.id)).toHaveLength(57);
+});
+it('keeps compact job summaries in sync with job mutations and deletion', async () => {
+  const archive = job(); await saveJob(archive);
+  expect(await hasActiveJobs()).toBe(true);
+  expect(await getJobSummaries()).toEqual([expect.objectContaining({ id: archive.id, service: 'discord', title: archive.serverName, status: 'scanning' })]);
+  expect((await getJobSummaries())[0]).not.toHaveProperty('channels');
+  archive.status = 'finished'; await commitPage(archive, []);
+  expect(await hasActiveJobs()).toBe(false); expect((await getJobSummaries())[0].status).toBe('finished');
+  await deleteLocalRecords(archive.id); expect(await getJobSummaries()).toEqual([]);
+});
+it('queries a download or media status directly and batches changes without replacing unrelated files', async () => {
+  const archive = job(), records = normalizeMessages(messages, scope, archive.id).slice(0, 3);
+  records[0].status = 'transferring'; records[0].downloadId = 42;
+  records[1].status = 'staged'; records[2].status = 'downloaded';
+  archive.archive = { state: 'saving', filename: 'test.zip', downloadId: 43, blobUrl: null, bytes: 1, entries: 1, progress: 1, total: 1, error: null };
+  await commitPage(archive, records);
+  expect((await getMediaForDownload(42)).map(record => record.id)).toEqual([records[0].id]);
+  expect((await getArchiveJobsForDownload(43)).map(job => job.id)).toEqual([archive.id]);
+  expect((await getMedia(archive.id, ['staged'])).map(record => record.id)).toEqual([records[1].id]);
+  records[0].status = 'downloaded'; await saveMediaRecords([records[0]]);
+  records[1].status = 'downloaded'; archive.archive.state = 'saved'; await saveJobAndMedia(archive, [records[1]]);
+  expect((await getMedia(archive.id)).every(record => record.status === 'downloaded')).toBe(true);
+  expect((await getJobSummaries())[0].archiveState).toBe('saved');
+  archive.archive.downloadId = 44; await saveJob(archive);
+  expect(await getArchiveJobsForDownload(43)).toEqual([]);
+});

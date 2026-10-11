@@ -1,0 +1,591 @@
+{
+  "id": "1217290220718915654",
+  "name": "Dangpa's Art",
+  "channels": [
+    {
+      "id": "1218665430776807525",
+      "server_id": "1217290220718915654",
+      "name": "🅿atreon-sketch-gallery",
+      "parent_channel_id": "1218645182854070312",
+      "type": 15,
+      "position": 18,
+      "post_count": 0
+    },
+    {
+      "id": "1218666525276246076",
+      "server_id": "1217290220718915654",
+      "name": "s⭐-sketch-gallery",
+      "parent_channel_id": "1218645684035780649",
+      "type": 15,
+      "position": 21,
+      "post_count": 0
+    },
+    {
+      "id": "1218676992942014635",
+      "server_id": "1217290220718915654",
+      "name": "🅿atreon-art-gallery",
+      "parent_channel_id": "1218645182854070312",
+      "type": 15,
+      "position": 17,
+      "post_count": 0
+    },
+    {
+      "id": "1218678089555640351",
+      "server_id": "1217290220718915654",
+      "name": "s⭐-art-gallery",
+      "parent_channel_id": "1218645684035780649",
+      "type": 15,
+      "position": 20,
+      "post_count": 0
+    },
+    {
+      "id": "1218732858504515624",
+      "server_id": "1217290220718915654",
+      "name": "Overpowered (Full Comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 2
+    },
+    {
+      "id": "1226354886224908359",
+      "server_id": "1217290220718915654",
+      "name": "Director Tier Illustration Deliveries",
+      "parent_channel_id": "1218676992942014635",
+      "type": 11,
+      "position": 0,
+      "post_count": 83
+    },
+    {
+      "id": "1227715851830951956",
+      "server_id": "1217290220718915654",
+      "name": "polls-and-voting",
+      "parent_channel_id": "1218645182854070312",
+      "type": 0,
+      "position": 13,
+      "post_count": 299
+    },
+    {
+      "id": "1229091312414757036",
+      "server_id": "1217290220718915654",
+      "name": "🅿📊-polls-and-voting",
+      "parent_channel_id": "1218645182854070312",
+      "type": 15,
+      "position": 14,
+      "post_count": 0
+    },
+    {
+      "id": "1245987623726616597",
+      "server_id": "1217290220718915654",
+      "name": "Death Comes, Again (Incomplete Comic)",
+      "parent_channel_id": "1218676992942014635",
+      "type": 11,
+      "position": 0,
+      "post_count": 29
+    },
+    {
+      "id": "1268981792296271892",
+      "server_id": "1217290220718915654",
+      "name": "Palworld",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 2
+    },
+    {
+      "id": "1268983530189361317",
+      "server_id": "1217290220718915654",
+      "name": "Jackpot (animation)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 5
+    },
+    {
+      "id": "1268989415951171654",
+      "server_id": "1217290220718915654",
+      "name": "Work for Visual Novels",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 44
+    },
+    {
+      "id": "1268993704975274117",
+      "server_id": "1217290220718915654",
+      "name": "Miscellaneous Fan Art Dump",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 208
+    },
+    {
+      "id": "1268995994440302725",
+      "server_id": "1217290220718915654",
+      "name": "Original Characters (Miscellaneous)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 31
+    },
+    {
+      "id": "1268997980074016799",
+      "server_id": "1217290220718915654",
+      "name": "Redwall",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 16
+    },
+    {
+      "id": "1269000048407220315",
+      "server_id": "1217290220718915654",
+      "name": "Rearing & Courting Royalty ( HTTYD )",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 3
+    },
+    {
+      "id": "1269006686665052160",
+      "server_id": "1217290220718915654",
+      "name": "Viper Tail (Choose-Your-Own-Adventure)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 6
+    },
+    {
+      "id": "1269011164583690291",
+      "server_id": "1217290220718915654",
+      "name": "Chorizo & Friends (OC)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 45
+    },
+    {
+      "id": "1269015647438897295",
+      "server_id": "1217290220718915654",
+      "name": "Another Eidos of Dragon Vein R",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 7
+    },
+    {
+      "id": "1269021763262480465",
+      "server_id": "1217290220718915654",
+      "name": "The Legend of Zelda",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 5
+    },
+    {
+      "id": "1269024935561531423",
+      "server_id": "1217290220718915654",
+      "name": "Commissions & Other's OCs",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 35
+    },
+    {
+      "id": "1269026231420977273",
+      "server_id": "1217290220718915654",
+      "name": "League of Legends",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 10
+    },
+    {
+      "id": "1269030623440277626",
+      "server_id": "1217290220718915654",
+      "name": "FNAF",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 11
+    },
+    {
+      "id": "1269031493473402891",
+      "server_id": "1217290220718915654",
+      "name": "Final Fantasy",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 9
+    },
+    {
+      "id": "1269035742424731739",
+      "server_id": "1217290220718915654",
+      "name": "Mario & Friends",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 41
+    },
+    {
+      "id": "1269036673539244133",
+      "server_id": "1217290220718915654",
+      "name": "Ride & Dragon (OC) (Incomplete)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 12
+    },
+    {
+      "id": "1269041812052508805",
+      "server_id": "1217290220718915654",
+      "name": "Elden Ring & Souls",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 12
+    },
+    {
+      "id": "1269045146792755334",
+      "server_id": "1217290220718915654",
+      "name": "Time Off (VN)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 11
+    },
+    {
+      "id": "1269048459328094320",
+      "server_id": "1217290220718915654",
+      "name": "Beastars",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 10
+    },
+    {
+      "id": "1269049551822655571",
+      "server_id": "1217290220718915654",
+      "name": "The Lion King",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 11
+    },
+    {
+      "id": "1269063576530714688",
+      "server_id": "1217290220718915654",
+      "name": "Pokemon",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 30
+    },
+    {
+      "id": "1269084362226532432",
+      "server_id": "1217290220718915654",
+      "name": "Digimon",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 3
+    },
+    {
+      "id": "1269085760301170799",
+      "server_id": "1217290220718915654",
+      "name": "Bad Guys",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 3
+    },
+    {
+      "id": "1269106798758072381",
+      "server_id": "1217290220718915654",
+      "name": "Odd Taxi",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 9
+    },
+    {
+      "id": "1269114063817015347",
+      "server_id": "1217290220718915654",
+      "name": "Rocket Raccoon",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 47
+    },
+    {
+      "id": "1269117100652498976",
+      "server_id": "1217290220718915654",
+      "name": "Rudy's New Year's Karaoke Jaunt (Full Comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 1
+    },
+    {
+      "id": "1269120827194871808",
+      "server_id": "1217290220718915654",
+      "name": "Live A Hero, Housamo Tokyo Afterschool Summoner etc ( Lifewonder )",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 89
+    },
+    {
+      "id": "1269124948534890546",
+      "server_id": "1217290220718915654",
+      "name": "Starhooked",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 16
+    },
+    {
+      "id": "1269158585984749648",
+      "server_id": "1217290220718915654",
+      "name": "Zootopia",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 37
+    },
+    {
+      "id": "1273443577913147536",
+      "server_id": "1217290220718915654",
+      "name": "Out of This World (SWAT Kats) (Full Comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 22
+    },
+    {
+      "id": "1278478738211999906",
+      "server_id": "1217290220718915654",
+      "name": "Souldiers",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 5
+    },
+    {
+      "id": "1278486274340028416",
+      "server_id": "1217290220718915654",
+      "name": "Lackadaisy Cats",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 28
+    },
+    {
+      "id": "1280283365504717013",
+      "server_id": "1217290220718915654",
+      "name": "sketch-feed-n-chats",
+      "parent_channel_id": "1412498458690191452",
+      "type": 0,
+      "position": 6,
+      "post_count": 2442
+    },
+    {
+      "id": "1283225599548325928",
+      "server_id": "1217290220718915654",
+      "name": "The Prince's Downfall",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 11
+    },
+    {
+      "id": "1301728505838440529",
+      "server_id": "1217290220718915654",
+      "name": "Pumpup F's Ghost Cat (OC) (Full Comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 4
+    },
+    {
+      "id": "1312610821058203710",
+      "server_id": "1217290220718915654",
+      "name": "Dragon Slayer (VN) Download & Links",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 47
+    },
+    {
+      "id": "1313728938186375300",
+      "server_id": "1217290220718915654",
+      "name": "Cumming Together for Christmas (One-Off)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 0
+    },
+    {
+      "id": "1322339435681026139",
+      "server_id": "1217290220718915654",
+      "name": "Kung Fu Panda",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 7
+    },
+    {
+      "id": "1322402602759094272",
+      "server_id": "1217290220718915654",
+      "name": "Fuzzy Buttler (Regular Show) (Complete Comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 8
+    },
+    {
+      "id": "1341212756963233832",
+      "server_id": "1217290220718915654",
+      "name": "Package Deal (Fortnite) (Wendell x Oscar x Polar) (Full comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 13
+    },
+    {
+      "id": "1345073498942345257",
+      "server_id": "1217290220718915654",
+      "name": "Grove Campout (Animatic WIP)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 17
+    },
+    {
+      "id": "1353106926921060383",
+      "server_id": "1217290220718915654",
+      "name": "Leviathan Lover (Full comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 24
+    },
+    {
+      "id": "1356406232004694219",
+      "server_id": "1217290220718915654",
+      "name": "Robbin Raccoon in \"Ding Dog Dicked\" (Full comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 57
+    },
+    {
+      "id": "1357809280480313384",
+      "server_id": "1217290220718915654",
+      "name": "Belfort & Lupin Embrace Nature (Full Comic Sketch)",
+      "parent_channel_id": "1218666525276246076",
+      "type": 11,
+      "position": 0,
+      "post_count": 56
+    },
+    {
+      "id": "1361096298874405027",
+      "server_id": "1217290220718915654",
+      "name": "Telegram Stickers (Chorizo and Friends)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 4
+    },
+    {
+      "id": "1367256186516279429",
+      "server_id": "1217290220718915654",
+      "name": "Grove Camp out (Animation)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 138
+    },
+    {
+      "id": "1368744585785905223",
+      "server_id": "1217290220718915654",
+      "name": "Zenless Zone Zero (ZZZ) (Von Lycoan, Ben, etc)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 20
+    },
+    {
+      "id": "1368747171419131974",
+      "server_id": "1217290220718915654",
+      "name": "Sketch Dump May 2025",
+      "parent_channel_id": "1218666525276246076",
+      "type": 11,
+      "position": 0,
+      "post_count": 23
+    },
+    {
+      "id": "1368748263964016671",
+      "server_id": "1217290220718915654",
+      "name": "Mao Mao Heroes of Pureheart",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 7
+    },
+    {
+      "id": "1386592707538976788",
+      "server_id": "1217290220718915654",
+      "name": "Undertale / Deltarune",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 8
+    },
+    {
+      "id": "1387274537774878773",
+      "server_id": "1217290220718915654",
+      "name": "Sketch Dump June 2025",
+      "parent_channel_id": "1218666525276246076",
+      "type": 11,
+      "position": 0,
+      "post_count": 5
+    },
+    {
+      "id": "1399839707642335353",
+      "server_id": "1217290220718915654",
+      "name": "Sketch Dump July 2025",
+      "parent_channel_id": "1218666525276246076",
+      "type": 11,
+      "position": 0,
+      "post_count": 16
+    },
+    {
+      "id": "1399841432092803182",
+      "server_id": "1217290220718915654",
+      "name": "Fabulous Beast (You Shou Yan)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 5
+    },
+    {
+      "id": "1399903963574177985",
+      "server_id": "1217290220718915654",
+      "name": "Hard Bargain (Elden Ring Night Reign) (Guardian x Libra) (Comic)",
+      "parent_channel_id": "1218678089555640351",
+      "type": 11,
+      "position": 0,
+      "post_count": 304
+    },
+    {
+      "id": "1412496584213659728",
+      "server_id": "1217290220718915654",
+      "name": "art-feed-n-chat",
+      "parent_channel_id": "1412498458690191452",
+      "type": 0,
+      "position": 5,
+      "post_count": 960
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "serverStatus": 200,
+  "apiMime": "text/css; charset=utf-8",
+  "channels": [
+    {
+      "id": "1268995994440302725",
+      "pages": [
+        {
+          "offset": 0,
+          "count": 32,
+          "first": "1268995994440302725",
+          "last": "1379593494393258125",
+          "attachments": 57
+        },
+        {
+          "offset": 150,
+          "count": 0,
+          "attachments": 0
+        },
+        {
+          "offset": 300,
+          "count": 0,
+          "attachments": 0
+        }
+      ]
+    },
+    {
+      "id": "1218678089555640351",
+      "pages": [
+        {
+          "offset": 0,
+          "count": 0,
+          "attachments": 0
+        },
+        {
+          "offset": 150,
+          "count": 0,
+          "attachments": 0
+        },
+        {
+          "offset": 300,
+          "count": 0,
+          "attachments": 0
+        }
+      ]
+    },
+    {
+      "id": "1268993704975274117",
+      "pages": [
+        {
+          "offset": 0,
+          "count": 150,
+          "first": "1268993704975274117",
+          "last": "1368797470666260553",
+          "attachments": 139
+        },
+        {
+          "offset": 150,
+          "count": 59,
+          "first": "1368824019964530738",
+          "last": "1484008961827930143",
+          "attachments": 23
+        },
+        {
+          "offset": 300,
+          "count": 0,
+          "attachments": 0
+        }
+      ]
+    }
+  ],
+  "thumbnail": {
+    "status": 200,
+    "bytes": 55959,
+    "sha256": "eb1d7a6022f5772f1e7b8cf8d94223b271601c43dc15b29ef6899d5f7aadab43",
+    "width": 800,
+    "height": 593
+  },
+  "pageContext": {
+    "status": 200,
+    "count": 32
+  },
+  "download": {
+    "id": 1,
+    "state": "complete",
+    "error": null,
+    "bytes": 55959
+  }
+}
