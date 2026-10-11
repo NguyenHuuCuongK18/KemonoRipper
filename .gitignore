@@ -5,3 +5,6 @@ artifacts/
 .probe/
 coverage/
 *.log
+.service-check-*/
+.media-check-*/
+.selection-check-*/

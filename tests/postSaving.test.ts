@@ -67,12 +67,12 @@ describe('folder access recovery', () => {
     await expect(postCommand({ type: 'POST_ACTION', jobId: value.id, action: 'resume' })).rejects.toThrow('Folder access is required');
     expect(await getPostJob(value.id)).toMatchObject({ status: 'paused', autoDownload: selection, error: value.error });
   });
-  it('connects sync history and scans the whole creator only after the writer validates the directory', async () => {
+  it('connects sync history without expanding a single post to the whole creator', async () => {
     const value = job(); await savePostJob(value);
     mocks.offscreen.mockResolvedValue(emptySync(value));
     await postCommand({ type: 'POST_SYNC_CONNECT', jobId: value.id, directoryId: 'folder', name: 'Archive' });
     const connected = (await getPostJob(value.id))!;
-    expect(connected).toMatchObject({ status: 'scanning', source: { postId: null }, sourceUrl: 'https://pawchive.pw/fanbox/user/24738214', destination: { kind: 'folder', directoryId: 'folder' }, sync: { source: { creatorId: '24738214' } } });
+    expect(connected).toMatchObject({ status: 'scanning', source: { postId: fixture.id }, sourceUrl: value.sourceUrl, destination: { kind: 'folder', directoryId: 'folder' }, sync: { source: { creatorId: '24738214' } } });
     expect(connected.scan.complete).toBe(false);
   });
   it('leaves the previous job intact if the selected history disappears before connection', async () => {

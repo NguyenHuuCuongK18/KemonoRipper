@@ -29,7 +29,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </fieldset>
       <button id="download" class="primary full" disabled>Download ZIP</button>
       <div class="actions"><button id="pause" hidden>Pause</button><button id="resume" hidden>Resume</button><button id="retry" hidden>Retry failures</button><button id="save-zip" hidden>Save ZIP again</button><button id="cancel" hidden>Cancel</button></div>
-      <details id="post-list" hidden><summary id="post-list-label">Posts</summary><ul id="posts"></ul><button id="more" hidden>Show more</button></details>
+      <details id="post-list" hidden><summary id="post-list-label">Posts</summary><p id="post-selection-count" class="small muted"></p><fieldset id="post-picker"><legend class="sr-only">Posts to save</legend><div id="post-selection-actions" class="actions"><label><input id="all-posts" type="checkbox" checked>All posts</label><button id="clear-post-selection" type="button">Clear selection</button></div><ul id="posts"></ul></fieldset><button id="more" hidden>Show more</button></details>
       <details id="more-options"><summary>More options</summary><p id="transfer-policy" class="small muted"></p><div class="actions"><button id="rescan">Scan again</button><button id="import-sync" type="button">Import history only</button><button id="manifest">Export manifest</button></div><input id="sync-file" type="file" accept=".json,application/json" hidden></details>
     </section><details id="recent" hidden><summary>Recent jobs</summary><ul id="jobs"></ul></details>
     <details id="local-data"><summary>Storage &amp; history</summary><p id="local-data-count" class="small muted"></p><p class="small muted">Clear extension data to free space. Downloaded files, archive folders, and their sync.json files stay on disk.</p>
@@ -87,7 +87,8 @@ function options(): void {
   el('choose-folder').textContent = post?.job.error?.startsWith('Folder access is required.') ? 'Restore folder access' : 'Change folder';
   el('folder-note').textContent = destination() === 'zip' ? 'Includes sync.json for future folder updates.' : post?.job.destination?.kind === 'folder' && post.job.destination.name ? `${post.job.destination.name}${post.totals.syncPosts ? ' · Sync updates this folder.' : ''}` : post ? `Creates ${creatorFolder(post.job)}/, or updates an existing archive.` : 'Choose where to save this creator.';
   el('quality-note').textContent = service === 'posts' ? check('images').checked && check('fallback').checked ? 'Full resolution by default. Missing originals use thumbnails, saved separately.' : 'Full resolution. Unavailable originals are reported.' : thumbnail ? 'Save surviving image previews.' : 'Only available originals can be saved.';
-  el('download').textContent = service === 'posts' && destination() === 'folder' ? post?.job.destination?.kind === 'folder' && post.job.destination.directoryId ? post.job.source.postId ? 'Save this post' : post.totals.syncPosts ? 'Sync folder' : 'Save to folder' : 'Choose save location' : service === 'posts' && post?.job.source.postId ? 'Save this post as ZIP' : 'Download ZIP';
+  const subset = post && !post.allPostsSelected;
+  el('download').textContent = service === 'posts' && destination() === 'folder' ? post?.job.destination?.kind === 'folder' && post.job.destination.directoryId ? post.job.source.postId ? 'Save this post' : subset ? 'Save selected posts' : post.totals.syncPosts ? 'Sync folder' : 'Save to folder' : 'Choose save location' : service === 'posts' && post?.job.source.postId ? 'Save this post as ZIP' : service === 'posts' && subset ? 'Download selected posts as ZIP' : 'Download ZIP';
 }
 select('quality').onchange = options;
 check('images').onchange = options;
@@ -167,10 +168,20 @@ check('sync-file').onchange = () => void run(async () => {
   if (file.size > 32 * 1024 * 1024) throw new Error('The sync JSON exceeds the 32 MiB limit.');
   await send({ type: 'POST_SYNC_IMPORT', jobId: selected, json: JSON.parse(await file.text()) });
   optionsJob = null; setDestination('folder');
-  const scope = parsePostUrl(sourceUrl)!; sourceUrl = postSourceUrl({ ...scope, postId: null });
-  select('scope').value = 'profile';
   await recentJobs();
 });
+function choosePostSelection(postId: string | undefined, selectedPost: boolean): void {
+  if (!selected || !post || busy) return;
+  el<HTMLFieldSetElement>('post-picker').disabled = true;
+  void run(async () => { await send({ type: 'POST_SELECT', jobId: selected!, ...(postId === undefined ? {} : { postId }), selected: selectedPost }); })
+    .finally(() => { postRowsKey = ''; if (post) renderPost(post); });
+}
+check('all-posts').onchange = () => choosePostSelection(undefined, check('all-posts').checked);
+el('clear-post-selection').onclick = () => choosePostSelection(undefined, false);
+el('posts').onchange = event => {
+  const input = event.target;
+  if (input instanceof HTMLInputElement && input.dataset.postId) choosePostSelection(input.dataset.postId, input.checked);
+};
 async function start(): Promise<void> {
   if (!service) return; post = null; discord = null; optionsJob = null;
   cleanup = null; el('clear-confirm').hidden = true;
@@ -283,16 +294,31 @@ function renderPost(view: PostView): void {
   if (totals.thumbnails) el('summary').textContent += ` · ${totals.thumbnails} saved as thumbnails`;
   if (totals.syncPosts && !totals.selected) el('summary').textContent += `${el('summary').textContent ? ' · ' : ''}${totals.newPosts} new posts`;
   el('post-list').hidden = !view.posts.length; el('post-list-label').textContent = `Posts (${view.posts.length < totals.posts ? view.posts.length + '/' : ''}${totals.posts})`;
+  el('post-selection-actions').hidden = !!job.source.postId;
+  el('post-selection-count').textContent = job.source.postId ? 'Only this post will be saved. Archive history keeps your earlier posts.' : `${totals.selectedPosts}/${totals.posts} posts selected. Only selected posts will be saved.`;
+  check('all-posts').checked = view.allPostsSelected;
+  check('all-posts').indeterminate = !view.allPostsSelected && totals.selectedPosts > 0;
+  el<HTMLFieldSetElement>('post-picker').disabled = busy || !job.scan.complete || ['scanning', 'downloading'].includes(job.status) || job.archive?.state === 'saving' || job.status === 'paused' && totals.selected > 0;
   const rowsKey = job.id + JSON.stringify(view.posts);
   if (rowsKey !== postRowsKey) {
     postRowsKey = rowsKey;
-    el('posts').replaceChildren(...view.posts.map(item => { const row = document.createElement('li'), title = document.createElement('span'), count = document.createElement('small'); title.textContent = item.title; title.title = item.title; count.textContent = `${item.files} files`; row.append(title, count); return row; }));
+    el('posts').replaceChildren(...view.posts.map(item => {
+      const row = document.createElement('li'), title = document.createElement('span'), count = document.createElement('small');
+      title.textContent = item.title; title.title = item.title; count.textContent = `${item.files} files`;
+      if (job.source.postId) row.append(title);
+      else {
+        const label = document.createElement('label'), input = document.createElement('input');
+        input.type = 'checkbox'; input.dataset.postId = item.id; input.checked = item.selected;
+        label.append(input, title); row.append(label);
+      }
+      row.append(count); return row;
+    }));
   }
   el('more').hidden = totals.posts <= view.posts.length || view.posts.length >= 1000;
   if (job.error) notice(job.error);
   else if (postErrorNotice && el('notice').textContent === postErrorNotice) notice('');
   postErrorNotice = job.error || '';
-  common(job.status, job.archive, totals.retryable, job.scan.complete, job.transferPolicy);
+  common(job.status, job.archive, totals.retryable, job.scan.complete && totals.selectedPosts > 0, job.transferPolicy);
 }
 function renderDiscord(view: DiscordView): void {
   const { job, totals } = view;

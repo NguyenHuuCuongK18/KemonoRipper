@@ -8,7 +8,9 @@ A local-first Chromium extension with two saving services: **Discord** archives 
 2. Choose **Load unpacked** and select the project's `dist` folder. For an existing installation, choose **Reload**.
 3. Refresh the supported site tab and click the extension icon. No separate dashboard is needed.
 
-`KemonoPawchiveArchiveRipper-0.4.3.zip` contains the same build; extract it before loading it. Existing jobs remain in local storage. An unpacked extension keeps using its selected directory: updating this project's `dist` will not update a separately extracted ZIP directory. Reload the extension, refresh the archive tab, and confirm version **0.4.3** on the browser's extensions page. Use **More options → Scan again** to refresh an existing job's stored media URLs.
+`KemonoPawchiveArchiveRipper-0.5.0.zip` contains the same build; extract it before loading it. Existing jobs remain in local storage. An unpacked extension keeps using its selected directory: updating this project's `dist` will not update a separately extracted ZIP directory. Reload the extension, refresh the archive tab, and confirm version **0.5.0** on the browser's extensions page. Use **More options → Scan again** to refresh an existing job's stored media URLs.
+
+Version 0.5.0 adds individual post checkboxes and preserves your post scope when connecting an existing creator folder, choosing `sync.json`, or importing history. A single-post page stays on that post. Selected posts from a profile stay selected. Extending an archive keeps earlier successful history without automatically downloading other posts. See [release notes](CHANGELOG.md) and the [release check](docs/RELEASE_CHECK.md).
 
 Version 0.4.3 adjusts simultaneous downloads automatically using browser-reported CPU, approximate RAM, and connection hints. Downloads start at one or two transfers, then increase after successful media transfers, up to **8 for Posts** or **4 for Discord** on capable devices. Low-memory devices, slow connections, and Data Saver use lower limits; unavailable hardware hints retain a ceiling of two. Rate limits halve concurrency immediately and honor Retry-After; repeated network/server failures also reduce it. A cooldown prevents immediate increases, and the policy persists with the job across worker restarts. **More options** shows the current limit. More simultaneous transfers can help when latency limits throughput; server speed, bandwidth, disk speed, and image decoding still affect the result. API discovery retains its existing pacing.
 
@@ -22,7 +24,7 @@ Version 0.4 stops rapid worker polling when idle, queries browser downloads dire
 
 Open a creator profile, such as `https://pawchive.pw/fanbox/user/4862787`, to discover every archived post. Open a post, such as `https://pawchive.pw/fanbox/user/4862787/post/12129865`, to select that post alone. The overlay fills in the creator, platform, and scope from the current address and starts discovery. A post page also offers **Entire creator profile**.
 
-Discovery uses one progress bar and a combined count such as **Discovered: 50/118 posts**. When no reliable total is available, it shows an animated bar until pagination finishes. Post titles are available as compact list rows under the collapsed **Posts** section.
+Discovery uses one progress bar and a combined count such as **Discovered: 50/118 posts**. When no reliable total is available, it shows an animated bar until pagination finishes. Expand **Posts** to select individual posts. **Clear selection** starts with none; check the posts you want, or check **All posts** to save the entire discovered profile. The selection count and download button identify your scope. Selections persist with the job. Finish or cancel ongoing work before changing its selected posts.
 
 Posts save full resolution by default. **Save thumbnail if unavailable** is checked initially: it saves a preview only when the archive marks an original missing or its server returns HTTP 404/410. Fallback images go in `thumbnail`, are counted in the UI, and retain thumbnail identities in `sync.json` so later syncs can still download newly available originals. Uncheck it to report missing originals instead. Images, other files, and post text can be selected separately. Post text is written to `post.txt` in `full res`; other files never use thumbnail fallback.
 
@@ -46,6 +48,15 @@ New post folders use `YYYY-MM-DD_PostId_PostTitle`, with publication dates norma
 
 ## Sync an existing creator archive
 
+To collect only a few posts from the same creator:
+
+1. On the creator profile, expand **Posts**, click **Clear selection**, and check the posts to save. Alternatively, open one post directly.
+2. Choose **ZIP file** and save the selected posts. Extract the ZIP so its creator folder contains `sync.json`, `full res`, and any thumbnails.
+3. Choose the next posts on the profile, or open another post from that creator. Choose **Creator folder → Choose sync.json**, select the extracted archive's history, and allow its folder. **Change folder** can connect that extracted creator folder directly too.
+4. Use **Save selected posts** or **Save this post**. Only those posts are checked and downloaded; earlier successful files and their history remain. Choosing archive history does not switch to the whole profile or select additional posts.
+
+For an entire creator sync, explicitly use the creator profile with **All posts** selected:
+
 1. Open the creator's Patreon or Fanbox profile and click the extension.
 2. Click **Choose sync.json**, then select the archive’s `sync.json` in the access tab. An older post `manifest.json` is also accepted. `failures.json` records failures and cannot identify successful downloads.
 3. If requested, click **Allow archive folder**. The picker opens at the file’s location; approve the folder containing it. An existing connection with write access skips this step. Keep the access tab open and use **Return to creator**.
@@ -53,7 +64,7 @@ New post folders use `YYYY-MM-DD_PostId_PostTitle`, with publication dates norma
 
 Choosing a file grants access to that file; writing neighbouring media still needs folder access. The browser’s [`startIn` option](https://wicg.github.io/file-system-access/#starting-directory) lets the permission picker open in the chosen file’s parent folder. A copied JSON outside the archive cannot grant access to the original archive. Select the file inside the extracted archive; older layouts such as `ArchiveRoot/fanbox/CreatorId_CreatorName` remain supported. **More options → Import history only** remains available to import history separately before choosing a destination.
 
-`sync.json` updates after successful writes and keeps earlier download history. Failed or unavailable files are not recorded as downloaded. You can also simply choose an existing creator folder: its `sync.json` or older `manifest.json` is detected automatically. Later **Sync folder** runs scan for new posts before saving. The JSON belongs to one website, creator, and platform; mismatches are rejected. Importing a JSON from a post page switches to that creator's entire profile. This does not sync a whole website.
+`sync.json` updates after successful writes and keeps earlier download history. Failed or unavailable files are not recorded as downloaded. You can also simply choose an existing creator folder: its `sync.json` or older `manifest.json` is detected automatically. Later **Sync folder** runs scan for new posts before saving when **All posts** is selected. Saving a subset or a single post keeps that scope. The JSON belongs to one website, creator, and platform; mismatches are rejected. Importing history does not expand the post scope. This does not sync a whole website.
 
 ZIP remains available under **Save to → ZIP file** for separate exports. New post ZIPs use the same single `fanbox_CreatorId_CreatorName` or `patreon_CreatorId_CreatorName` wrapper without `ArchiveRoot`, and include `manifest.json`, `sync.json`, and `failures.json`. Extract before syncing into a folder. Selecting an existing creator archive reuses that directory rather than nesting another wrapper inside it; older folder layouts remain usable.
 
@@ -85,14 +96,20 @@ Removing a cache, removing a job, or clearing all data requires confirmation in 
 
 ## Development
 
+Use Node.js 22.12+, 24, or 26+ in the supported even-numbered release ranges in `package.json`. Vitest 5 replaces vulnerable older test tooling; its requirements are documented in the [migration guide](https://vitest.dev/guide/migration/).
+
 ```powershell
 npm.cmd ci
 npm.cmd run check
 npm.cmd run test:browser
 npm.cmd run test:acceptance
+npm.cmd run test:selection
 npm.cmd run package
+npm.cmd run release:verify
 ```
 
-`check` runs the existing unit suite, TypeScript checking, and the production build. The browser check uses an isolated Chromium profile, controlled API/media responses, real ZIP downloads, and actual directory writes through an OPFS directory handle replacing the native OS picker. It checks legacy imports, incremental sync, missing-file recovery, creator/path validation, and folder permission recovery. Its profile and downloaded test content are removed in a cleanup block. No whole live creator archive is downloaded for testing.
+`npm.cmd run release:check` runs the complete local release gate: unit tests, type checking, a fresh production build, all three controlled browser checks, ZIP packaging, and byte-for-byte package verification. Run `npm.cmd audit` separately when connected to the npm registry. Only the current release ZIP is retained in the repository; `dist`, dependency installs, profiles, and generated test outputs are ignored.
+
+`check` runs the existing unit suite, TypeScript checking, and the production build. The browser checks use isolated Chromium profiles, controlled API/media responses, real ZIP downloads, and actual directory writes through an OPFS directory handle replacing the native OS picker. They check legacy imports, incremental sync, missing-file recovery, creator/path validation, folder permission recovery, and the selected-post ZIP-to-folder workflow. Profiles and downloaded test content are removed in cleanup blocks. Native OS dialogs still require a manual check. No whole live creator archive is downloaded for testing.
 
 See [architecture](docs/ARCHITECTURE.md), [post API notes](docs/POST_API.md), and [download policy](docs/DOWNLOAD_POLICY.md).

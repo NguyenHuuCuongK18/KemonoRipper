@@ -9,6 +9,7 @@ import { assertSyncSource, emptySync, mergeSync, parseSync, recordSaved, validSe
 import type { PostCommand, PostJob, PostSyncIndex } from './types';
 import { cleanupSuccessfulZip, removeJobCache } from '../cacheMaintenance';
 import { transferFailed, transferLimit, transferSucceeded } from '../../core/transferConcurrency';
+import { changePostSelection, selectedPosts } from './selection';
 
 const client = new PostClient();
 const delay = (attempt: number, retryAfter = 0) => Math.max(retryAfter, 2000 * 2 ** Math.max(0, attempt - 1));
@@ -38,14 +39,16 @@ export async function pausePosts(): Promise<void> {
   }
 }
 export function postDetail(job: PostJob, limit = 100) {
-  const { posts, tasks, sync, detailQueue, ...summary } = job;
+  const { posts, tasks, sync, detailQueue, selectedPostIds, ...summary } = job;
   const { fingerprints: _fingerprints, ...scan } = summary.scan;
   const syncedPosts = new Set(sync?.posts.map(post => post.id));
+  const selectedIds = selectedPostIds === undefined ? undefined : new Set(selectedPostIds);
   const origins = new Set<string>();
   const totals = { synced: 0, thumbnails: 0, syncPosts: sync?.posts.length || 0, newPosts: 0,
-    posts: posts.length, discovered: posts.length - detailQueue.length, total: job.scan.total,
+    posts: posts.length, selectedPosts: 0, discovered: posts.length - detailQueue.length, total: job.scan.total,
     images: 0, files: 0, fullPosts: 0, selected: tasks.length, saved: 0, failed: 0, retryable: 0, processed: 0 };
   for (const post of posts) {
+    if (!selectedIds || selectedIds.has(post.id)) totals.selectedPosts++;
     if (!syncedPosts.has(post.id)) totals.newPosts++;
     if (post.hasFull !== false) totals.fullPosts++;
     for (const media of post.media) {
@@ -63,8 +66,8 @@ export function postDetail(job: PostJob, limit = 100) {
     if (task.status === 'failed') totals.retryable++;
     if (saved || task.status === 'failed' || task.status === 'unavailable') totals.processed++;
   }
-  return { job: { ...summary, scan }, originalOrigins: [...origins], totals,
-    posts: posts.slice(0, Math.min(1000, Math.max(1, limit))).map(post => ({ id: post.id, title: post.title, files: post.media.length, hasFull: post.hasFull })) };
+  return { job: { ...summary, scan }, originalOrigins: [...origins], totals, allPostsSelected: selectedPostIds === undefined,
+    posts: posts.slice(0, Math.min(1000, Math.max(1, limit))).map(post => ({ id: post.id, title: post.title, files: post.media.length, hasFull: post.hasFull, selected: !selectedIds || selectedIds.has(post.id) })) };
 }
 async function saveZip(job: PostJob): Promise<void> {
   const archive = job.archive;
@@ -106,7 +109,10 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
   const job = await requireJob(message.jobId);
   if (message.type === 'POST_DETAIL') return postDetail(job, message.limit);
   if (job.archive?.state === 'saving' && !(message.type === 'POST_ACTION' && message.action === 'cancel')) throw new Error('Finish or cancel the current ZIP save first.');
-  if (message.type === 'POST_FOLDER' || message.type === 'POST_SYNC_CONNECT') {
+  if (message.type === 'POST_SELECT') {
+    if (['scanning', 'downloading'].includes(job.status) || job.status === 'paused' && (job.tasks.length || job.autoDownload)) throw new Error('Finish or cancel this job before changing its selected posts.');
+    changePostSelection(job, message.postId, message.selected);
+  } else if (message.type === 'POST_FOLDER' || message.type === 'POST_SYNC_CONNECT') {
     const syncConnect = message.type === 'POST_SYNC_CONNECT';
     const reconnect = job.destination?.kind === 'folder' && job.destination.directoryId === message.directoryId;
     if (job.status === 'downloading' && (!reconnect || syncConnect)) throw new Error('Pause this download before changing its archive.');
@@ -123,7 +129,6 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     if (index) { job.sync = mergeSync(job.sync, index); if (!retainDownload) job.selection = index.selection; }
     if (syncConnect && !retainDownload) {
       await pausePosts();
-      job.source.postId = null; job.sourceUrl = postSourceUrl(job.source);
       resetScan(job);
     }
   } else if (message.type === 'POST_SYNC_IMPORT') {
@@ -131,7 +136,6 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     const index = parseSync(message.json, job.source);
     await pausePosts();
     job.sync = mergeSync(job.sync, index); job.selection = index.selection;
-    job.source.postId = null; job.sourceUrl = postSourceUrl(job.source);
     await release(job.archive?.blobUrl || null); resetScan(job);
     if (job.destination?.kind !== 'folder') job.destination = { kind: 'folder', directoryId: '', name: '' };
   } else if (message.type === 'POST_DOWNLOAD') {
@@ -141,7 +145,8 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     if (!['folder', 'zip'].includes(destination)) throw new Error('Invalid download destination.');
     if (destination === 'zip' && job.sync) throw new Error('Sync extends an existing folder. Choose Save to folder.');
     if (destination === 'folder' && (job.destination?.kind !== 'folder' || !job.destination.directoryId)) throw new Error('Choose the creator folder before saving. For an older ZIP, choose its extracted creator folder containing thumbnail or full res.');
-    if (destination === 'folder' && job.status === 'finished' && !job.source.postId) {
+    if (!selectedPosts(job).length) throw new Error('Select at least one post before saving.');
+    if (destination === 'folder' && job.status === 'finished' && !job.source.postId && job.selectedPostIds === undefined) {
       resetScan(job); job.autoDownload = selection;
       await savePostJob(job); return null;
     }

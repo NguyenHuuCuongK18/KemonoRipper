@@ -37,11 +37,13 @@ export interface PostJob {
   destination?: PostDestination; sync?: PostSyncIndex;
   autoDownload?: PostSelection;
   transferPolicy?: TransferPolicy;
+  selectedPostIds?: string[];
 }
 export type PostCommand =
   | { type: 'POST_START'; url: string; expectedPosts?: number | null }
   | { type: 'POST_DETAIL'; jobId: string; limit?: number }
   | { type: 'POST_DOWNLOAD'; jobId: string; selection: PostSelection; destination?: 'folder' | 'zip' }
+  | { type: 'POST_SELECT'; jobId: string; postId?: string; selected: boolean }
   | { type: 'POST_SYNC_IMPORT'; jobId: string; json: unknown }
   | { type: 'POST_SYNC_CONNECT'; jobId: string; directoryId: string; name: string }
   | { type: 'POST_FOLDER'; jobId: string; directoryId: string; name: string }

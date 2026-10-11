@@ -3,6 +3,7 @@ import { safeSegment } from '../../core/filenameBuilder';
 import { normalizeTimestamp } from '../../core/mediaNormalizer';
 import { relativePathParts } from '../../storage/folderWriter';
 import type { ApiPost, ArchivedPost, Attachment, PostJob, PostMedia, PostScope, PostSelection, PostTask, Quality } from './types';
+import { selectedPosts } from './selection';
 
 const storedPath = /^\/[0-9a-f]{2}\/[0-9a-f]{2}\/[0-9a-f]{64}(?:\.[a-z0-9_-]{1,16})?$/i;
 const images = /\.(png|jpe?g|webp|gif|avif|bmp|tiff?|svg|heic|heif|jxl)$/i;
@@ -102,7 +103,7 @@ function filename(name: string): string {
 export function createTasks(job: PostJob, selection: PostSelection): PostTask[] {
   const tasks: PostTask[] = [];
   const qualities: Quality[] = selection.quality === 'both' ? ['thumbnail', 'full res'] : [selection.quality];
-  for (const post of job.posts) for (const quality of qualities) {
+  for (const post of selectedPosts(job)) for (const quality of qualities) {
     const folder = `${job.destination?.kind === 'folder' ? '' : creatorFolder(job) + '/'}${quality}/${postFolder(post)}`;
     for (const [index, media] of post.media.entries()) {
       if (media.kind === 'image' ? !selection.images : !selection.files || quality === 'thumbnail') continue;

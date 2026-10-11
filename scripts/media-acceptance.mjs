@@ -14,10 +14,11 @@ const hosts = ['kemono.cr', 'pawchive.pw'].flatMap(domain =>
   ['', 'img.', 'file.', 'n1.', 'n2.', 'n3.', 'n4.', 'n5.', 'n42.', 'cdn.', 'media.eu.'].map(prefix => prefix + domain));
 const requests = [], errors = [];
 let originalStatus = 200;
+let diagnostic = async () => ({ requests, errors });
 const waitFor = async work => {
   const until = Date.now() + 45000;
   while (Date.now() < until) { const value = await work(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 150)); }
-  throw new Error('Timed out waiting for media acceptance state.');
+  throw new Error('Timed out waiting for media acceptance state: ' + JSON.stringify(await diagnostic()));
 };
 let context;
 try {
@@ -103,6 +104,7 @@ try {
     const reply = await chrome.runtime.sendMessage(message); if (!reply.ok) throw new Error(reply.error); return reply.data;
   }, message);
   const jobId = (await send({ type: 'SERVICE_JOBS' }))[0].id;
+  diagnostic = async () => ({ ...(await send({ type: 'POST_DETAIL', jobId })), notice: await frame.locator('#notice').textContent(), requests, errors });
   const detail = await waitFor(async () => {
     const value = await send({ type: 'POST_DETAIL', jobId }); return value.job.archive?.state === 'saved' && value;
   });

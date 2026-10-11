@@ -52,7 +52,7 @@ async function connect(handle: ArchiveDirectory, directoryId: string, sync = fal
     detail = await send<Detail>({ type: 'POST_DETAIL', jobId: jobId! });
     if (detail.job.status === 'paused') throw new Error(detail.job.error || 'The download is still paused. Try restoring access again.');
   }
-  status.textContent = resume ? 'Folder access confirmed. Download resumed. Keep this tab open until saving finishes.' : sync ? 'Sync connected. Checking the creator for updates. Return to the creator to sync this archive.' : 'Folder connected. Return to the creator to save. Keep this tab open until saving finishes.';
+  status.textContent = resume ? 'Folder access confirmed. Download resumed. Keep this tab open until saving finishes.' : sync ? 'Sync connected. Your post scope is unchanged. Return to the creator to save your selected posts. Keep this tab open until saving finishes.' : 'Folder connected. Return to the creator to save. Keep this tab open until saving finishes.';
   syncStep.hidden = true; pendingSync = undefined;
   back.hidden = false;
   // Closing the last top-level extension tab can revoke a session-only filesystem grant.

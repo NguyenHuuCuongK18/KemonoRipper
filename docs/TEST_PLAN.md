@@ -1,5 +1,13 @@
 # Validation and manual smoke test
 
+## Version 0.5 release validation
+
+`npm.cmd run release:check` runs all unit tests and strict TypeScript checks, rebuilds dist, runs the existing browser and media acceptance suites plus `test:selection`, packages the release, and verifies matching source/package/lock/build versions and every packaged byte against dist. Dependency security is checked separately with `npm.cmd audit` so an unavailable registry does not masquerade as a local test failure.
+
+Selection regressions cover all/none/subset semantics, exclusion without losing undisplayed posts, invalid IDs/types, persisted filtering, empty-selection rejection, immutable active scopes, single-post sync-file connection and history import, preserved subsets on rescan, and extending a finished creator folder without generating other posts' tasks. The selected-post Chromium flow uses three controlled posts: save post 1 as ZIP, extract it, choose its real sync.json through the access tab, save only post 2 into that folder, repeat without extra transfers, and connect the same archive on post 3 without a creator-page API request. It verifies exact image bytes, selected-only ZIP metadata, cumulative saved history, one browser ZIP download, and cleanup of temporary files.
+
+Native folder/file dialogs and session permission prompts remain manual checks. On a real creator, repeat the ZIP-to-folder sequence with two individually chosen posts, confirm the source selector and checkboxes stay unchanged after choosing sync.json, and verify unrelated posts are absent. Explicitly choose All posts to verify whole-creator sync remains available. Live creator archives are not downloaded by automated tests.
+
 ## Version 0.3 validation
 
 Version 0.4.3 adds 24 tests for automatic transfer concurrency: absent/invalid CPU and RAM reports, low-memory devices, slow connections and Data Saver, per-service ceilings, cautious growth after successful network transfers, persistent rate-limit cooldowns, repeated transient failures, unchanged missing-file handling, and gradual recovery. Controller tests exercise a real four-transfer Discord batch, filling a post pool around existing transfers, policy persistence, draining work after a network capacity reduction, and refusing new starts in the same tick as HTTP 429 even on a final attempt. Existing folder, ZIP, pause/cancel, browser restart, and media acceptance checks continue to apply. Live-site speed improvements are not benchmarked; the tests verify concurrency and correctness under controlled responses.

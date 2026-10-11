@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kemono & Pawchive Archive Ripper",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Save Discord archives and Patreon/Fanbox posts from Kemono and Pawchive in an on-page overlay.",
   "minimum_chrome_version": "120",
   "permissions": [

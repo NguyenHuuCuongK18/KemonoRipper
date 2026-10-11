@@ -1,6 +1,6 @@
 {
   "name": "kemono-pawchive-archive-ripper",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Local-first Discord and Patreon/Fanbox post archiver for Kemono and Pawchive",
@@ -11,8 +11,11 @@
     "check": "npm run test && npm run build",
     "test:browser": "node scripts/browser-test.mjs",
     "test:acceptance": "node scripts/media-acceptance.mjs",
+    "test:selection": "node scripts/selection-acceptance.mjs",
     "recon": "node scripts/recon.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "release:check": "npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run package && npm run release:verify"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.24",
@@ -22,8 +25,9 @@
     "playwright": "^1.56.0",
     "typescript": "^5.9.0",
     "vite": "^7.1.0",
-    "vitest": "^3.2.0"
+    "vitest": "^5.0.3"
   },
+  "engines": { "node": "^22.12.0 || ^24.0.0 || >=26.0.0" },
   "dependencies": {
     "@zip.js/zip.js": "2.23.0"
   }

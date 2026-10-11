@@ -16,8 +16,9 @@ export async function buildPostZip(job: PostJob, signal: AbortSignal, progress: 
       yield { path: task.path, blob, date: date && Number.isFinite(date.getTime()) ? date : undefined };
     }
     const base = creatorFolder(job);
-    const posts = job.posts.map(post => ({ ...post, content: job.selection.text ? post.content : undefined, embed: job.selection.text ? post.embed : undefined }));
-    const manifest = { schemaVersion: 1, sourceUrl: job.sourceUrl, creator: job.creatorName, service: job.source.platform, selection: job.selection, scan: job.scan, posts, files: job.tasks };
+    const postIds = new Set(job.tasks.map(task => task.postId));
+    const posts = job.posts.filter(post => postIds.has(post.id)).map(post => ({ ...post, content: job.selection.text ? post.content : undefined, embed: job.selection.text ? post.embed : undefined }));
+    const manifest = { schemaVersion: 1, sourceUrl: job.sourceUrl, creator: job.creatorName, service: job.source.platform, selection: job.selection, selectedPostIds: job.selectedPostIds, scan: job.scan, posts, files: job.tasks };
     yield { path: `${base}/manifest.json`, blob: new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }) };
     yield { path: `${base}/sync.json`, blob: new Blob([JSON.stringify(zipSync(job), null, 2)], { type: 'application/json' }) };
     yield { path: `${base}/failures.json`, blob: new Blob([JSON.stringify(job.tasks.filter(task => ['failed', 'unavailable'].includes(task.status)), null, 2)], { type: 'application/json' }) };
