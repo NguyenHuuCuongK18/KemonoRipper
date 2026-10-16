@@ -8,20 +8,23 @@ import { archiveFile, buildZip, clearZipCache, clearAllZipCaches, removeStagedFi
 import { buildPostZip } from '../services/posts/zip';
 import { postTaskCached, transferPost } from '../services/posts/transfer';
 import { checkFolder, folderSync, writePostFile, writePostIndex } from '../services/posts/folder';
-import type { ArchivedPost, PostJob, PostScope, PostTask } from '../services/posts/types';
+import { startExtraction, extractionStatus, forgetExtraction, commitExtraction, stopExtractions, extractingJobs, clearExtractedCache, removeExtractedArchive } from '../services/posts/extraction';
+import type { ArchivedPost, PostJob, PostScope, PostTask, PostTransferProgress } from '../services/posts/types';
 const urls = new Map<string, Blob>();
 interface Build { state: 'building' | 'ready' | 'failed'; progress: number; total: number; bytes: number; entries: number; error: string | null; abort: AbortController; work?: Promise<void> }
 const builds = new Map<string, Build>();
-const transfers = new Map<string, { jobId: string; abort: AbortController; state: 'transferring' | 'done'; result?: Awaited<ReturnType<typeof transferPost>>; work?: Promise<void> }>();
+interface PostTransfer { jobId: string; abort: AbortController; state: 'transferring' | 'done'; result?: Awaited<ReturnType<typeof transferPost>>; work?: Promise<void>; progress?: PostTransferProgress }
+const transfers = new Map<string, PostTransfer>();
 async function process(message: { action: string; cleanup?: ZipCacheCleanup; url?: string; blobUrls?: string[]; text?: string; mime?: string; jobId?: string; recordId?: string; directoryId?: string; path?: string; overwrite?: boolean; job?: Job; records?: MediaRecord[]; postJob?: PostJob; task?: PostTask; post?: ArchivedPost; source?: PostScope }): Promise<unknown> {
   if (message.action === 'cache-list') return listZipCaches();
   if (message.action === 'cache-remove') {
-    if ([...transfers.values()].some(transfer => transfer.jobId === message.jobId) || builds.get(message.jobId!)?.state === 'building') throw new Error('This cache is in use. Finish or cancel the job before clearing it.');
+    if ([...transfers.values()].some(transfer => transfer.jobId === message.jobId) || extractingJobs().includes(message.jobId!) || builds.get(message.jobId!)?.state === 'building') throw new Error('This cache is in use. Finish or cancel the job before clearing it.');
     await clearZipCache(message.jobId!); builds.delete(message.jobId!); return null;
   }
   if (message.action === 'zip-prune') {
     const protectedIds = new Set(message.cleanup!.protectedJobIds);
     for (const transfer of transfers.values()) protectedIds.add(transfer.jobId);
+    for (const id of extractingJobs()) protectedIds.add(id);
     for (const [id, build] of builds) if (build.state === 'building') protectedIds.add(id);
     const result = await pruneZipCaches({ ...message.cleanup!, protectedJobIds: [...protectedIds] });
     for (const id of result.removed) builds.delete(id);
@@ -30,6 +33,7 @@ async function process(message: { action: string; cleanup?: ZipCacheCleanup; url
   if (message.action === 'local-purge') {
     if (message.jobId !== undefined && !/^[a-zA-Z0-9_-]{1,80}$/.test(message.jobId)) throw new Error('Invalid job cache to remove.');
     const pending: Promise<void>[] = [];
+    stopExtractions(message.jobId);
     for (const [key, transfer] of transfers) if (message.jobId === undefined || transfer.jobId === message.jobId) {
       transfer.abort.abort(); if (transfer.work) pending.push(transfer.work); transfers.delete(key);
     }
@@ -48,19 +52,28 @@ async function process(message: { action: string; cleanup?: ZipCacheCleanup; url
   if (message.action === 'post-folder-write') return writePostFile(message.postJob!, message.recordId!);
   if (message.action === 'post-folder-index') { await writePostIndex(message.postJob!); return null; }
   if (message.action === 'post-cache-remove') { await removeStagedFile(message.jobId!, message.recordId!); return null; }
+  if (message.action === 'post-extract-start') { startExtraction(message.postJob!, message.recordId!); return null; }
+  if (message.action === 'post-extract-status') return extractionStatus(message.jobId!, message.recordId!);
+  if (message.action === 'post-extract-commit') return commitExtraction(message.postJob!, message.recordId!);
+  if (message.action === 'post-extract-remove-original') { await removeExtractedArchive(message.postJob!, message.recordId!); return null; }
+  if (message.action === 'post-extract-forget') {
+    if (message.postJob?.destination?.kind === 'folder') await clearExtractedCache(message.jobId!, extractionStatus(message.jobId!, message.recordId!)?.files || []);
+    forgetExtraction(message.jobId!, message.recordId!); return null;
+  }
   if (message.action === 'post-transfer-start') {
     const key = `${message.jobId}:${message.task!.id}`;
     if (transfers.has(key)) return null;
-    const transfer: { jobId: string; abort: AbortController; state: 'transferring' | 'done'; result?: Awaited<ReturnType<typeof transferPost>>; work?: Promise<void> } = { jobId: message.jobId!, abort: new AbortController(), state: 'transferring' };
+    const transfer: PostTransfer = { jobId: message.jobId!, abort: new AbortController(), state: 'transferring' };
     transfers.set(key, transfer);
-    transfer.work = transferPost(message.jobId!, message.task!, message.post!, message.source!, transfer.abort.signal)
+    transfer.work = transferPost(message.jobId!, message.task!, message.post!, message.source!, transfer.abort.signal, progress => { transfer.progress = progress; })
       .then(result => { transfer.result = result; transfer.state = 'done'; })
       .catch(error => { transfer.result = { failure: error instanceof Error ? error.message : 'Attachment transfer failed.', status: 0 }; transfer.state = 'done'; });
     return null;
   }
-  if (message.action === 'post-transfer-status') { const transfer = transfers.get(`${message.jobId}:${message.recordId}`); return transfer ? { state: transfer.state, ...transfer.result } : null; }
+  if (message.action === 'post-transfer-status') { const transfer = transfers.get(`${message.jobId}:${message.recordId}`); return transfer ? { state: transfer.state, progress: transfer.progress, ...transfer.result } : null; }
   if (message.action === 'post-transfer-forget') { transfers.delete(`${message.jobId}:${message.recordId}`); return null; }
   if (message.action === 'post-transfer-stop') {
+    stopExtractions(message.jobId);
     for (const [key, transfer] of transfers) if (transfer.jobId === message.jobId) { transfer.abort.abort(); await transfer.work; transfers.delete(key); }
     return null;
   }

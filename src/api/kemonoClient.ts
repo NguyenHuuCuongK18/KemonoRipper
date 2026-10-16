@@ -5,6 +5,10 @@ export class RequestError extends Error {
   constructor(message: string, public status: number, public retryAfterMs = 0) { super(message); this.name = 'RequestError'; }
   get retryable(): boolean { return this.status === 0 || this.status === 429 || this.status >= 500; }
 }
+export class InvalidJsonError extends RequestError {
+  constructor() { super('API returned invalid or incomplete JSON. Retry failures to continue this page.', 422); this.name = 'InvalidJsonError'; }
+  override get retryable(): boolean { return true; }
+}
 export function retryAfter(value: string | null, now = Date.now()): number {
   if (!value) return 0;
   const seconds = Number(value);
@@ -25,8 +29,11 @@ export class KemonoClient {
       // Never include raw error bodies (which can contain session or anti-abuse data).
       throw new RequestError(`API HTTP ${response.status}.${hint}`, response.status, retryAfter(response.headers.get('retry-after')));
     }
-    try { return JSON.parse(await response.text()); }
-    catch { throw new RequestError('API returned invalid JSON; this page is incomplete.', 422); }
+    let body: string;
+    try { body = await response.text(); }
+    catch { throw new RequestError('API response was interrupted or timed out. Retry failures to continue this page.', 0); }
+    try { return JSON.parse(body); }
+    catch { throw new InvalidJsonError(); }
   }
   async channel(channelId: string, offset: number, origin = ARCHIVE_ORIGINS[0]): Promise<ApiMessage[]> {
     requireId(channelId);

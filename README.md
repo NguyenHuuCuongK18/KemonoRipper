@@ -8,7 +8,17 @@ A local-first Chromium extension with two saving services: **Discord** archives 
 2. Choose **Load unpacked** and select the project's `dist` folder. For an existing installation, choose **Reload**.
 3. Refresh the supported site tab and click the extension icon. No separate dashboard is needed.
 
-`KemonoPawchiveArchiveRipper-0.5.0.zip` contains the same build; extract it before loading it. Existing jobs remain in local storage. An unpacked extension keeps using its selected directory: updating this project's `dist` will not update a separately extracted ZIP directory. Reload the extension, refresh the archive tab, and confirm version **0.5.0** on the browser's extensions page. Use **More options → Scan again** to refresh an existing job's stored media URLs.
+`KemonoPawchiveArchiveRipper-0.7.0.zip` contains the same build; extract it before loading it. Existing jobs remain in local storage. An unpacked extension keeps using its selected directory: updating this project's `dist` will not update a separately extracted ZIP directory. Reload the extension, refresh the archive tab, and confirm version **0.7.0** on the browser's extensions page. Use **More options → Scan again** to refresh an existing job's stored media URLs.
+
+Version 0.7.0 adds a scanned **File types** checklist, optional archive extraction, and portable `settings.json`. All advertised types, including unknown/custom extensions, are selected initially. Successful extraction keeps only the unpacked contents; corrupt, encrypted or unsupported archives are kept and reported. Folder sync restores these choices and verifies extracted files without repeatedly downloading their compressed originals.
+
+Version 0.6.1 removes the five-minute limit that could restart a large file despite continuing data. Transfers now time out after 90 seconds without received data; image validation has a separate deadline. The overlay shows active filenames, received bytes, known sizes and retry waits. Text/images run before large source archives fill every transfer slot, and queue starts/completions use batched database writes. Collected files remain reusable when reloading or resuming an existing job. These changes reduce avoidable retries and bookkeeping; the full-resolution archive size and site/connection throughput still determine download time.
+
+Version 0.6.0 saves available content despite missing posts, unavailable files, or isolated unreadable pages. Missing post details retain whatever the list already supplied; transient errors retry before being skipped. Good records on a partly invalid page are retained. Discovery gaps and missing media are recorded together in `failures.json` in both ZIPs and creator folders. The overlay shows discovery errors, **Skip this error** can advance a paused scan, and **Retry failures** revisits skipped discovery items after scanning, retaining earlier posts and folder history. Site access failures, rate limits, and three consecutive bad pages pause automatically. A completed scan with reported gaps does not claim full coverage.
+
+Version 0.5.2 automatically retries invalid or interrupted API responses with backoff, keeping the current page and all earlier results. Creator scans can also recover through the alternate post-list endpoint. If responses remain unreadable after three attempts, **Resume** or **Retry failures** continues from the saved page after site access recovers.
+
+Version 0.5.1 fixes scans stopping on Pawchive post IDs such as `p-1237087` with a misleading creator/service mismatch. After updating the existing extension directory and reloading, choose **Resume** or **Retry failures** on the paused job to continue from its saved page. Direct post links and archive sync history also support these IDs.
 
 Version 0.5.0 adds individual post checkboxes and preserves your post scope when connecting an existing creator folder, choosing `sync.json`, or importing history. A single-post page stays on that post. Selected posts from a profile stay selected. Extending an archive keeps earlier successful history without automatically downloading other posts. See [release notes](CHANGELOG.md) and the [release check](docs/RELEASE_CHECK.md).
 
@@ -28,6 +38,12 @@ Discovery uses one progress bar and a combined count such as **Discovered: 50/11
 
 Posts save full resolution by default. **Save thumbnail if unavailable** is checked initially: it saves a preview only when the archive marks an original missing or its server returns HTTP 404/410. Fallback images go in `thumbnail`, are counted in the UI, and retain thumbnail identities in `sync.json` so later syncs can still download newly available originals. Uncheck it to report missing originals instead. Images, other files, and post text can be selected separately. Post text is written to `post.txt` in `full res`; other files never use thumbnail fallback.
 
+Expand **File types** after discovery to select individual extensions. **All types** and **Clear types** control the checklist. Types come from advertised filenames or storage paths; extensionless files appear as **Unknown**. Generated post text uses `.txt`. All types are selected by default, and types first encountered on a later sync are selected automatically. These choices apply to downloaded attachments and generated text; archive contents become known only after downloading, and extraction preserves all their files. Original formats unsupported by browser image decoding are saved as bytes.
+
+**Extract downloaded archives** is optional and off by default. ZIP, 7z, RAR4/RAR5, TAR, and gzip/bzip2/xz-compressed TAR files unpack into a sibling `filename.ext.extracted/` directory. A successful extraction saves its contents and removes the compressed source. Failed, encrypted, empty, or unsupported archives remain alongside any successfully extracted files, with an entry in `failures.json`; **Retry failures** can retry extraction. ZIP decoding streams to disk; the other decoder has a 512 MiB compressed-input limit. Each archive is limited to 10,000 regular files and 8 GiB of output. Links and unsafe or duplicate paths are rejected. Archives exceeding these limits remain compressed. Extraction runs one archive at a time in a worker while downloading can continue.
+
+Each new ZIP or creator folder includes `settings.json` with the content, quality, file-type exclusions and extraction settings. Connecting an existing folder restores it automatically. Older archives without this file use all file types and extraction off, retaining their earlier quality/content choices; the next sync generates `settings.json`. Sync checks every recorded extracted output: intact contents skip the compressed download, and missing outputs trigger recovery from that archive. Disabling extraction downloads a compressed source again when only its extracted contents remain.
+
 **Creator folder** is the default. Click **Choose save location** to open the folder chooser, then **Save to folder** (or **Save this post**). **Change folder** appears after connecting a folder. The extension creates a creator wrapper named `fanbox_CreatorId_CreatorName` or `patreon_CreatorId_CreatorName` inside that location. Quality folders and the JSON files stay inside this wrapper, with no ZIP or `ArchiveRoot` folder. Discovery and saving use the same compact progress area. Pause/resume, cancel, and retry are supported. Folder saving requires a Chromium browser with the File System Access API enabled.
 
 ```text
@@ -42,6 +58,7 @@ ChosenSaveLocation/fanbox_CreatorId_CreatorName/
       post.txt
   sync.json
   failures.json
+  settings.json
 ```
 
 New post folders use `YYYY-MM-DD_PostId_PostTitle`, with publication dates normalized to UTC; absent or invalid dates use `unknown-date`. Existing saved folders keep their original names during sync, and cached jobs retain their paths until a new download is started. Missing files without a successful fallback are recorded in `failures.json`. Rate limits and server/network failures retain bounded retries and never trigger thumbnail fallback. Stored attachment bytes are preserved, and decoded image formats determine image filename extensions. External embeds are recorded in selected post text rather than fetched from other websites.
@@ -66,7 +83,7 @@ Choosing a file grants access to that file; writing neighbouring media still nee
 
 `sync.json` updates after successful writes and keeps earlier download history. Failed or unavailable files are not recorded as downloaded. You can also simply choose an existing creator folder: its `sync.json` or older `manifest.json` is detected automatically. Later **Sync folder** runs scan for new posts before saving when **All posts** is selected. Saving a subset or a single post keeps that scope. The JSON belongs to one website, creator, and platform; mismatches are rejected. Importing history does not expand the post scope. This does not sync a whole website.
 
-ZIP remains available under **Save to → ZIP file** for separate exports. New post ZIPs use the same single `fanbox_CreatorId_CreatorName` or `patreon_CreatorId_CreatorName` wrapper without `ArchiveRoot`, and include `manifest.json`, `sync.json`, and `failures.json`. Extract before syncing into a folder. Selecting an existing creator archive reuses that directory rather than nesting another wrapper inside it; older folder layouts remain usable.
+ZIP remains available under **Save to → ZIP file** for separate exports. New post ZIPs use the same single `fanbox_CreatorId_CreatorName` or `patreon_CreatorId_CreatorName` wrapper without `ArchiveRoot`, and include `manifest.json`, `sync.json`, `settings.json`, and `failures.json`. Extract before syncing into a folder. Selecting an existing creator archive reuses that directory rather than nesting another wrapper inside it; older folder layouts remain usable.
 
 Older saved post jobs also use this single creator wrapper when their ZIP is rebuilt or saved again. A cached ZIP with the old `ArchiveRoot/fanbox` or `ArchiveRoot/patreon` layout is repackaged from the collected files before saving. Attachment bytes and successful download history are retained.
 
@@ -104,12 +121,14 @@ npm.cmd run check
 npm.cmd run test:browser
 npm.cmd run test:acceptance
 npm.cmd run test:selection
+npm.cmd run test:tolerance
+npm.cmd run test:settings
 npm.cmd run package
 npm.cmd run release:verify
 ```
 
-`npm.cmd run release:check` runs the complete local release gate: unit tests, type checking, a fresh production build, all three controlled browser checks, ZIP packaging, and byte-for-byte package verification. Run `npm.cmd audit` separately when connected to the npm registry. Only the current release ZIP is retained in the repository; `dist`, dependency installs, profiles, and generated test outputs are ignored.
+`npm.cmd run release:check` runs the complete local release gate: unit tests, type checking, a fresh production build, all five controlled browser checks, ZIP packaging, and byte-for-byte package verification. Run `npm.cmd audit` separately when connected to the npm registry. The current release ZIP is named above; `dist`, dependency installs, profiles, and generated test outputs are ignored.
 
-`check` runs the existing unit suite, TypeScript checking, and the production build. The browser checks use isolated Chromium profiles, controlled API/media responses, real ZIP downloads, and actual directory writes through an OPFS directory handle replacing the native OS picker. They check legacy imports, incremental sync, missing-file recovery, creator/path validation, folder permission recovery, and the selected-post ZIP-to-folder workflow. Profiles and downloaded test content are removed in cleanup blocks. Native OS dialogs still require a manual check. No whole live creator archive is downloaded for testing.
+`check` runs the existing unit suite, TypeScript checking, and the production build. The browser checks use isolated Chromium profiles, controlled API/media responses, real ZIP downloads, and actual directory writes through an OPFS directory handle replacing the native OS picker. They check legacy imports, incremental sync, missing-file recovery, creator/path validation, folder permission recovery, the selected-post ZIP-to-folder workflow, and tolerant discovery with ZIP/folder reports and gap retries. Profiles and downloaded test content are removed in cleanup blocks. Native OS dialogs still require a manual check. No whole live creator archive is downloaded for testing.
 
 See [architecture](docs/ARCHITECTURE.md), [post API notes](docs/POST_API.md), and [download policy](docs/DOWNLOAD_POLICY.md).

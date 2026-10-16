@@ -32,7 +32,7 @@ export async function route(message: ServiceCommand, sender: chrome.runtime.Mess
     return (await getJobSummaries()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
   if (message.type.startsWith('POST_')) {
-    if (message.type === 'POST_DOWNLOAD' || message.type === 'POST_SYNC_IMPORT' || message.type === 'POST_SYNC_CONNECT' || (message.type === 'POST_ACTION' && ['resume', 'retry', 'rescan'].includes(message.action))) {
+    if (message.type === 'POST_DOWNLOAD' || message.type === 'POST_SYNC_IMPORT' || message.type === 'POST_SYNC_CONNECT' || (message.type === 'POST_ACTION' && ['resume', 'retry', 'rescan', 'skip'].includes(message.action))) {
       await pausePosts();
       for (const job of await getJobs(['scanning', 'downloading'])) { job.resumeStatus = job.status as 'scanning' | 'downloading'; job.status = 'paused'; await saveJob(job); }
     }

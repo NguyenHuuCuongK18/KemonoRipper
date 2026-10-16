@@ -1,9 +1,9 @@
 import { build } from 'vite';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
 await build();
-for (const [name, entry, format] of [['background', 'src/background/index.ts', 'es'], ['content', 'src/content/index.ts', 'iife']]) {
+for (const [name, entry, format] of [['background', 'src/background/index.ts', 'es'], ['content', 'src/content/index.ts', 'iife'], ['extract-worker', 'src/services/posts/extractWorker.ts', 'es']]) {
   await build({ configFile: false, publicDir: false, build: {
     outDir: 'dist', emptyOutDir: false, target: 'chrome120',
     lib: { entry: resolve(entry), name: 'KemonoArchive', formats: [format], fileName: () => `${name}.js` },
@@ -12,6 +12,8 @@ for (const [name, entry, format] of [['background', 'src/background/index.ts', '
 }
 await copyFile('src/manifest.json', 'dist/manifest.json');
 await copyFile('node_modules/@zip.js/zip.js/LICENSE', 'dist/zip.js-LICENSE.txt');
+await copyFile('node_modules/libarchive-wasm/dist/libarchive.wasm', 'dist/libarchive.wasm');
+await cp('licenses', 'dist/licenses', { recursive: true });
 await mkdir('dist/icons', { recursive: true });
 // Code-native geometric archive mark; no external artwork or runtime assets.
 function crc32(bytes) { let crc = 0xffffffff; for (const b of bytes) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0); } return (crc ^ 0xffffffff) >>> 0; }

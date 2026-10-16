@@ -4,6 +4,7 @@ import { normalizeTimestamp } from '../../core/mediaNormalizer';
 import { relativePathParts } from '../../storage/folderWriter';
 import type { ApiPost, ArchivedPost, Attachment, PostJob, PostMedia, PostScope, PostSelection, PostTask, Quality } from './types';
 import { selectedPosts } from './selection';
+import { acceptsFileType, isArchive, mediaFileType } from './fileTypes';
 
 const storedPath = /^\/[0-9a-f]{2}\/[0-9a-f]{2}\/[0-9a-f]{64}(?:\.[a-z0-9_-]{1,16})?$/i;
 const images = /\.(png|jpe?g|webp|gif|avif|bmp|tiff?|svg|heic|heif|jxl)$/i;
@@ -97,7 +98,7 @@ export function postZipJob(job: PostJob): PostJob {
 }
 function filename(name: string): string {
   const dot = name.lastIndexOf('.');
-  const ext = dot >= 0 && /^[a-z0-9_-]{1,16}$/i.test(name.slice(dot + 1)) ? name.slice(dot) : '';
+  const ext = dot >= 0 && /^[a-z0-9_-]{1,64}$/i.test(name.slice(dot + 1)) ? name.slice(dot) : '';
   return safeSegment(ext ? name.slice(0, dot) : name, 'attachment') + ext;
 }
 export function createTasks(job: PostJob, selection: PostSelection): PostTask[] {
@@ -106,13 +107,15 @@ export function createTasks(job: PostJob, selection: PostSelection): PostTask[] 
   for (const post of selectedPosts(job)) for (const quality of qualities) {
     const folder = `${job.destination?.kind === 'folder' ? '' : creatorFolder(job) + '/'}${quality}/${postFolder(post)}`;
     for (const [index, media] of post.media.entries()) {
+      if (!acceptsFileType(mediaFileType(media), selection)) continue;
       if (media.kind === 'image' ? !selection.images : !selection.files || quality === 'thumbnail') continue;
       const url = quality === 'thumbnail' ? media.thumbnailUrl : media.originalUrl;
       const task: PostTask = { id: `${post.id}:${quality}:${media.id}`, postId: post.id, quality, kind: media.kind, url, path: `${folder}/${String(index + 1).padStart(3, '0')}_${filename(media.name)}`, status: url ? 'queued' : 'unavailable', bytes: null, attempts: 0, nextAt: 0, error: url ? null : 'Full-resolution file was not archived.' };
+      if (selection.extractArchives && quality === 'full res' && isArchive('file.' + mediaFileType(media))) task.extraction = { state: 'pending', files: [] };
       if (selection.quality === 'full res' && selection.fallbackToThumbnail && media.kind === 'image' && media.thumbnailUrl) task.fallbackUrl = media.thumbnailUrl;
       tasks.push(!url ? thumbnailFallback(task, task.error!) || task : task);
     }
-    if (selection.text) tasks.push({ id: `${post.id}:${quality}:text`, postId: post.id, quality, kind: 'text', url: null, path: `${folder}/post.txt`, status: 'queued', bytes: null, attempts: 0, nextAt: 0, error: null });
+    if (selection.text && acceptsFileType('txt', selection)) tasks.push({ id: `${post.id}:${quality}:text`, postId: post.id, quality, kind: 'text', url: null, path: `${folder}/post.txt`, status: 'queued', bytes: null, attempts: 0, nextAt: 0, error: null });
   }
   return tasks;
 }

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ offscreen: vi.fn(), release: vi.fn() }));
 vi.mock('../src/background/offscreenBridge', () => ({ ...mocks, saveText: vi.fn() }));
 import { tick } from '../src/background/controller';
-import { tickPosts } from '../src/services/posts/controller';
+import { postDetail, tickPosts } from '../src/services/posts/controller';
 import { createTasks, normalizePost } from '../src/services/posts/media';
 import { commitPage, deleteLocalRecords, getJob, getMedia, getPostJob, savePostJob } from '../src/storage/database';
 import { normalizeMessages } from '../src/core/mediaNormalizer';
@@ -43,6 +43,24 @@ it('fills the post pool to the restored device limit, accounting for transfers a
   expect(saved.transferPolicy?.limit).toBe(5);
   await tickPosts();
   expect(mocks.offscreen.mock.calls.filter(([action]) => action === 'post-transfer-start')).toHaveLength(3);
+});
+
+it('starts text and images before large source files so archives do not block the short work', async () => {
+  const value = postJob(2); value.tasks = value.tasks.slice(0, 3);
+  value.tasks[0].kind = 'file'; value.tasks[1].kind = 'image'; value.tasks[2].kind = 'text';
+  await savePostJob(value); await tickPosts();
+  expect(mocks.offscreen.mock.calls.filter(([action]) => action === 'post-transfer-start').map(([, args]) => args.task.kind)).toEqual(['text', 'image']);
+  expect((await getPostJob(value.id))!.tasks[0].status).toBe('queued');
+});
+
+it('publishes byte progress for active files without counting them as collected', async () => {
+  const value = postJob(2); value.tasks[0].status = 'transferring'; value.tasks[0].attempts = 1;
+  const progress = { receivedBytes: 71_000_000, totalBytes: 243_387_914, phase: 'downloading', updatedAt: 100_000 };
+  mocks.offscreen.mockImplementation(async action => action === 'post-transfer-status' ? { state: 'transferring', progress } : null);
+  await savePostJob(value); await tickPosts();
+  const saved = (await getPostJob(value.id))!, view = postDetail(saved);
+  expect(saved.tasks[0].progress).toEqual(progress); expect(view.totals.saved).toBe(0);
+  expect(view.activeTransfers[0]).toMatchObject({ progress });
 });
 
 it('grows and persists the post pool after successful completions', async () => {

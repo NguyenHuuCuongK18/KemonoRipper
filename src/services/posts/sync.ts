@@ -1,19 +1,16 @@
 import { relativePathParts } from '../../storage/folderWriter';
 import { parsePostUrl } from '../registry';
 import { isPostFolder } from './media';
+import { isPostId } from './postId';
+export { validSelection } from './settings';
+import { validSelection } from './settings';
 import type { PostJob, PostScope, PostSelection, PostSyncFile, PostSyncIndex, PostTask } from './types';
 
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid post sync JSON.');
   return value as Record<string, unknown>;
 };
-export function syncKey(id: string): string { return id.replace(/^(\d+:(?:thumbnail|full res):)\d+:(\/)/, '$1$2'); }
-export function validSelection(value: unknown): PostSelection {
-  const selection = object(value);
-  if (!['thumbnail', 'full res', 'both'].includes(String(selection.quality)) || ['images', 'files', 'text'].some(key => typeof selection[key] !== 'boolean')) throw new Error('Invalid content selection.');
-  if (selection.fallbackToThumbnail !== undefined && typeof selection.fallbackToThumbnail !== 'boolean') throw new Error('Invalid thumbnail fallback selection.');
-  return { quality: selection.quality as PostSelection['quality'], images: selection.images as boolean, files: selection.files as boolean, text: selection.text as boolean, ...(selection.fallbackToThumbnail !== undefined ? { fallbackToThumbnail: selection.fallbackToThumbnail } : {}) };
-}
+export function syncKey(id: string): string { return id.replace(/^((?:p-)?\d+:(?:thumbnail|full res):)\d+:(\/)/, '$1$2'); }
 export function assertSyncSource(index: PostSyncIndex, source: PostScope): void {
   if (index.source.origin !== source.origin || index.source.platform !== source.platform || index.source.creatorId !== source.creatorId) throw new Error('This JSON belongs to a different website, service, or creator. Open that creator’s profile to sync it.');
 }
@@ -31,7 +28,19 @@ function readFile(value: unknown, postId: string, legacy = false): PostSyncFile 
   }
   const parts = relativePathParts(path);
   if (parts.length !== 3 || parts[0] !== file.quality || !isPostFolder(parts[1], postId)) throw new Error('Downloaded paths must stay inside this post’s quality folder.');
-  return { id, quality: file.quality as PostSyncFile['quality'], kind: file.kind as PostSyncFile['kind'], path, bytes: file.bytes as number };
+  let extracted: PostSyncFile['extracted'];
+  if (file.extracted !== undefined) {
+    if (!Array.isArray(file.extracted) || file.extracted.length > 10000) throw new Error('Invalid extracted file history.');
+    extracted = file.extracted.map(raw => {
+      const entry = object(raw);
+      if (typeof entry.id !== 'string' || !entry.id.startsWith(id + ':extract:') || !/^\d+$/.test(entry.id.slice((id + ':extract:').length)) || typeof entry.path !== 'string' || !entry.path.startsWith(path + '.extracted/') || !Number.isSafeInteger(entry.bytes) || (entry.bytes as number) < 0) throw new Error('Invalid extracted file history.');
+      relativePathParts(entry.path);
+      return { id: entry.id, path: entry.path, bytes: entry.bytes as number };
+    });
+    if (new Set(extracted.map(entry => entry.id)).size !== extracted.length || new Set(extracted.map(entry => entry.path)).size !== extracted.length) throw new Error('Duplicate extracted file history.');
+  }
+  if (file.originalKept !== undefined && (file.originalKept !== false || !extracted?.length || file.kind === 'text')) throw new Error('Invalid extracted archive history.');
+  return { id, quality: file.quality as PostSyncFile['quality'], kind: file.kind as PostSyncFile['kind'], path, bytes: file.bytes as number, ...(extracted ? { extracted } : {}), ...(file.originalKept === false ? { originalKept: false as const } : {}) };
 }
 export function parseSync(input: unknown, scope: PostScope): PostSyncIndex {
   const data = object(input);
@@ -59,7 +68,7 @@ export function parseSync(input: unknown, scope: PostScope): PostSyncIndex {
   }
   for (const raw of data.posts) {
     const post = object(raw);
-    if (typeof post.id !== 'string' || !/^\d{1,40}$/.test(post.id) || ids.has(post.id)) throw new Error('Invalid or duplicate post ID in sync JSON.');
+    if (!isPostId(post.id) || ids.has(post.id)) throw new Error('Invalid or duplicate post ID in sync JSON.');
     ids.add(post.id);
     const files = legacy ? legacyFiles.get(post.id) || [] : post.files;
     if (!Array.isArray(files) || (count += files.length) > 200000) throw new Error('Invalid file list in sync JSON.');
@@ -89,7 +98,8 @@ export function recordSaved(index: PostSyncIndex, task: PostTask, title: string)
   if (!['downloaded', 'staged'].includes(task.status) || !task.bytes) return;
   let post = index.posts.find(post => post.id === task.postId);
   if (!post) { post = { id: task.postId, title, files: [] }; index.posts.push(post); }
-  const file = { id: syncKey(task.id), quality: task.quality, kind: task.kind, path: task.path, bytes: task.bytes };
+  const file: PostSyncFile = { id: syncKey(task.id), quality: task.quality, kind: task.kind, path: task.path, bytes: task.bytes,
+    ...(task.extraction?.state === 'done' && task.extraction.files.length ? { extracted: task.extraction.files, originalKept: false as const } : {}) };
   const old = post.files.findIndex(previous => previous.id === file.id);
   if (old < 0) post.files.push(file); else post.files[old] = file;
   index.updatedAt = new Date().toISOString();

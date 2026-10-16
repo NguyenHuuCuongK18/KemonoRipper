@@ -1,15 +1,17 @@
-import { RequestError } from '../../api/kemonoClient';
 import { getJobs, getPostJob, getPostJobs, getSavingPostJobs, getPostJobsForDownload, saveJob, savePostJob } from '../../storage/database';
 import { offscreen, release } from '../../background/offscreenBridge';
 import { safeSegment } from '../../core/filenameBuilder';
 import { parsePostUrl, postSourceUrl } from '../registry';
 import { PostClient } from './client';
-import { createTasks, normalizePost, postZipJob, thumbnailFallback } from './media';
+import { createTasks, postZipJob, thumbnailFallback } from './media';
+import { canSkipPostError, discoverPosts, retryPostFailures, skipPostError } from './discovery';
 import { assertSyncSource, emptySync, mergeSync, parseSync, recordSaved, validSelection } from './sync';
-import type { PostCommand, PostJob, PostSyncIndex } from './types';
+import type { ExtractedFile, PostCommand, PostExtraction, PostJob, PostSyncIndex, PostTransferProgress } from './types';
 import { cleanupSuccessfulZip, removeJobCache } from '../cacheMaintenance';
 import { transferFailed, transferLimit, transferSucceeded } from '../../core/transferConcurrency';
 import { changePostSelection, selectedPosts } from './selection';
+import { detectedFileTypes } from './fileTypes';
+import { defaultSelection } from './settings';
 
 const client = new PostClient();
 const delay = (attempt: number, retryAfter = 0) => Math.max(retryAfter, 2000 * 2 ** Math.max(0, attempt - 1));
@@ -23,7 +25,7 @@ async function startAutomaticDownload(job: PostJob): Promise<void> {
   const selection = job.autoDownload;
   if (!selection || !job.scan.complete) return;
   job.autoDownload = undefined; job.status = 'ready'; await savePostJob(job);
-  try { await postCommand({ type: 'POST_DOWNLOAD', jobId: job.id, selection, destination: 'folder' }); }
+  try { await postCommand({ type: 'POST_DOWNLOAD', jobId: job.id, selection, destination: job.destination?.kind || 'folder' }); }
   catch (error) {
     job.autoDownload = selection; job.status = 'paused'; job.resumeStatus = 'downloading';
     job.error = error instanceof Error ? error.message : 'Could not start sync.'; await savePostJob(job);
@@ -34,19 +36,20 @@ export async function pausePosts(): Promise<void> {
     job.resumeStatus = job.status as PostJob['resumeStatus']; job.status = 'paused';
     await offscreen('post-transfer-stop', { jobId: job.id });
     for (const task of job.tasks) if (task.status === 'transferring') { task.status = 'queued'; task.attempts = Math.max(0, task.attempts - 1); }
+    for (const task of job.tasks) if (task.extraction?.state === 'extracting') task.extraction = { state: 'pending', files: [] };
     if (job.archive?.state === 'building') { await offscreen('zip-stop', { jobId: job.id }); job.archive.state = 'pending'; }
     await savePostJob(job);
   }
 }
 export function postDetail(job: PostJob, limit = 100) {
   const { posts, tasks, sync, detailQueue, selectedPostIds, ...summary } = job;
-  const { fingerprints: _fingerprints, ...scan } = summary.scan;
+  const { fingerprints: _fingerprints, failures: _failures, retryQueue: _retryQueue, ...scan } = summary.scan;
   const syncedPosts = new Set(sync?.posts.map(post => post.id));
   const selectedIds = selectedPostIds === undefined ? undefined : new Set(selectedPostIds);
   const origins = new Set<string>();
   const totals = { synced: 0, thumbnails: 0, syncPosts: sync?.posts.length || 0, newPosts: 0,
     posts: posts.length, selectedPosts: 0, discovered: posts.length - detailQueue.length, total: job.scan.total,
-    images: 0, files: 0, fullPosts: 0, selected: tasks.length, saved: 0, failed: 0, retryable: 0, processed: 0 };
+    images: 0, files: 0, fullPosts: 0, selected: tasks.length, saved: 0, failed: 0, retryable: 0, processed: 0, discoveryFailures: job.scan.failures?.length || 0, extractionFailures: 0, extracting: 0, extracted: 0 };
   for (const post of posts) {
     if (!selectedIds || selectedIds.has(post.id)) totals.selectedPosts++;
     if (!syncedPosts.has(post.id)) totals.newPosts++;
@@ -57,6 +60,9 @@ export function postDetail(job: PostJob, limit = 100) {
     }
   }
   for (const task of tasks) {
+    if (task.extraction?.state === 'failed') { totals.extractionFailures++; totals.retryable++; }
+    if (task.extraction?.state === 'extracting') totals.extracting++;
+    totals.extracted += task.extraction?.files.length || 0;
     const collected = task.status === 'staged' || task.status === 'downloaded';
     const saved = task.status === 'downloaded' || (job.destination?.kind !== 'folder' && task.status === 'staged');
     if (task.synced) totals.synced++;
@@ -66,7 +72,10 @@ export function postDetail(job: PostJob, limit = 100) {
     if (task.status === 'failed') totals.retryable++;
     if (saved || task.status === 'failed' || task.status === 'unavailable') totals.processed++;
   }
-  return { job: { ...summary, scan }, originalOrigins: [...origins], totals, allPostsSelected: selectedPostIds === undefined,
+  const activeTransfers = tasks.filter(task => task.status === 'transferring').slice(0, 8).map(task => ({ name: task.path.split('/').at(-1)!, progress: task.progress }));
+  const queued = tasks.filter(task => task.status === 'queued');
+  const retryAt = queued.length ? Math.max(job.nextAt, Math.min(...queued.map(task => task.nextAt))) : 0;
+  return { job: { ...summary, scan }, originalOrigins: [...origins], totals, fileTypes: detectedFileTypes(job), activeTransfers, retryAt, canSkipError: canSkipPostError(job), allPostsSelected: selectedPostIds === undefined,
     posts: posts.slice(0, Math.min(1000, Math.max(1, limit))).map(post => ({ id: post.id, title: post.title, files: post.media.length, hasFull: post.hasFull, selected: !selectedIds || selectedIds.has(post.id) })) };
 }
 async function saveZip(job: PostJob): Promise<void> {
@@ -97,7 +106,7 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     const job: PostJob = {
       id: crypto.randomUUID(), service: 'posts', source, sourceUrl: postSourceUrl(source), creatorName: source.creatorId,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'scanning', resumeStatus: 'scanning',
-      selection: { quality: 'full res', images: true, files: true, text: true, fallbackToThumbnail: true },
+      selection: defaultSelection(),
       scan: { offset: 0, pages: 0, total: source.postId ? 1 : Number.isSafeInteger(message.expectedPosts) && message.expectedPosts! > 0 ? message.expectedPosts! : null, complete: false, error: null, attempts: 0, nextAt: 0, fingerprints: [] },
       posts: [], detailQueue: [], tasks: [], archive: undefined, destination: { kind: 'folder', directoryId: '', name: '' }, nextAt: 0, error: null,
     };
@@ -145,7 +154,8 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     if (!['folder', 'zip'].includes(destination)) throw new Error('Invalid download destination.');
     if (destination === 'zip' && job.sync) throw new Error('Sync extends an existing folder. Choose Save to folder.');
     if (destination === 'folder' && (job.destination?.kind !== 'folder' || !job.destination.directoryId)) throw new Error('Choose the creator folder before saving. For an older ZIP, choose its extracted creator folder containing thumbnail or full res.');
-    if (!selectedPosts(job).length) throw new Error('Select at least one post before saving.');
+    const reportOnly = !!job.scan.failures?.length && job.selectedPostIds === undefined;
+    if (!selectedPosts(job).length && !reportOnly) throw new Error('Select at least one post before saving.');
     if (destination === 'folder' && job.status === 'finished' && !job.source.postId && job.selectedPostIds === undefined) {
       resetScan(job); job.autoDownload = selection;
       await savePostJob(job); return null;
@@ -154,16 +164,17 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     job.autoDownload = undefined;
     const previous = new Map(job.tasks.map(task => [task.id, task]));
     job.tasks = createTasks(job, selection);
-    if (!job.tasks.length) throw new Error('Choose at least one available content type.');
+    if (!job.tasks.length && !reportOnly) throw new Error('Choose at least one available content type.');
     for (const task of job.tasks) {
       const old = previous.get(task.id);
       if (old && ['staged', 'downloaded'].includes(old.status) && await offscreen('post-cached', { jobId: job.id, task: old })) {
         Object.assign(task, { status: 'staged', bytes: old.bytes });
+        if (destination === 'zip' && task.extraction && old.extraction?.state === 'done') task.extraction = old.extraction;
         if (task.kind === 'image') task.path = task.path.replace(/\.[^/.]+$/, old.path.slice(old.path.lastIndexOf('.')));
       }
     }
     if (destination === 'folder') {
-      const checked = await offscreen<{ sync?: PostSyncIndex; files: { id: string; path: string; bytes: number }[] }>('post-folder-check', { postJob: job });
+      const checked = await offscreen<{ sync?: PostSyncIndex; files: { id: string; path: string; bytes: number; extraction?: PostExtraction }[] }>('post-folder-check', { postJob: job });
       job.sync = checked.sync || emptySync(job);
       const saved = new Map(checked.files.map(file => [file.id, file]));
       for (const task of job.tasks) { const file = saved.get(task.id); if (file) Object.assign(task, file, { status: 'downloaded', synced: true, error: null }); if (task.fallback) task.fallbackChecked = true; }
@@ -177,21 +188,35 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
     if (['scanning', 'downloading'].includes(job.status)) throw new Error('Pause or finish this job before scanning again.');
     await release(job.archive?.blobUrl || null); resetScan(job);
   }
+  else if (message.action === 'skip') {
+    skipPostError(job);
+    if (job.scan.complete && job.autoDownload) { await savePostJob(job); await startAutomaticDownload(job); return null; }
+  }
   else if (message.action === 'resume' || message.action === 'retry') {
     if (message.action === 'resume' && job.status !== 'paused') throw new Error('Only paused jobs can be resumed.');
     // Confirm access in the context that actually writes files before clearing the pause/error.
     if (job.destination?.kind === 'folder' && job.destination.directoryId && (job.tasks.length || job.autoDownload)) {
       await offscreen('post-folder-read', { directoryId: job.destination.directoryId, postJob: job });
     }
-    job.error = null; job.scan.error = null; job.scan.attempts = 0; job.scan.nextAt = 0;
+    job.error = null; job.scan.error = null; job.scan.errorStatus = null; job.scan.attempts = 0; job.scan.nextAt = 0;
+    if (message.action === 'resume') job.scan.consecutiveFailures = 0;
+    if (message.action === 'retry' && job.scan.complete && job.scan.failures?.length) {
+      retryPostFailures(job);
+      if (job.tasks.length) job.autoDownload = job.selection;
+    }
     if (job.scan.complete && job.autoDownload) { await startAutomaticDownload(job); return null; }
     for (const task of job.tasks) if (task.status === 'failed') { task.status = 'queued'; task.attempts = 0; task.nextAt = 0; task.error = null; }
-    if (job.archive?.cacheCleared) for (const task of job.tasks) if (['downloaded', 'staged'].includes(task.status)) { task.status = 'queued'; task.attempts = 0; task.nextAt = 0; task.bytes = null; }
+    for (const task of job.tasks) if (task.extraction?.state === 'failed') task.extraction = { state: 'pending', files: [] };
+    if (job.archive?.cacheCleared) for (const task of job.tasks) if (['downloaded', 'staged'].includes(task.status)) {
+      task.status = 'queued'; task.attempts = 0; task.nextAt = 0; task.bytes = null;
+      if (task.extraction) task.extraction = { state: 'pending', files: [] };
+    }
     job.status = !job.scan.complete ? 'scanning' : job.tasks.length ? 'downloading' : 'ready';
     if (job.archive && job.archive.state !== 'pending') { await release(job.archive.blobUrl); job.archive.blobUrl = null; job.archive.downloadId = null; job.archive.error = null; job.archive.cacheCleared = false; job.archive.cacheCleanupError = null; await offscreen('zip-stop', { jobId: job.id }); job.archive.state = 'pending'; }
   } else if (message.action === 'cancel') {
     await offscreen('post-transfer-stop', { jobId: job.id }); await offscreen('zip-stop', { jobId: job.id });
     for (const task of job.tasks) if (task.status === 'transferring') task.status = 'queued';
+    for (const task of job.tasks) if (task.extraction?.state === 'extracting') task.extraction = { state: 'pending', files: [] };
     if (job.archive?.state === 'saving' && job.archive.downloadId !== null) await chrome.downloads.cancel(job.archive.downloadId).catch(() => {});
     if (job.archive?.state === 'building') job.archive.state = 'pending';
     job.status = 'cancelled';
@@ -202,39 +227,21 @@ export async function postCommand(message: PostCommand): Promise<unknown> {
   await savePostJob(job); return null;
 }
 async function scan(job: PostJob): Promise<void> {
-  try {
-    if (job.detailQueue.length) {
-      const post = await client.post({ ...job.source, postId: job.detailQueue[0] });
-      const index = job.posts.findIndex(previous => previous.id === post.id);
-      job.posts[index] = normalizePost(post, job.source); job.detailQueue.shift();
-    } else {
-      const list = job.source.postId ? [await client.post(job.source)] : await client.posts(job.source, job.scan.offset);
-      const fingerprint = list.map(post => post.id).join(',');
-      if (list.length && job.scan.fingerprints.includes(fingerprint)) throw new Error('The API repeated a page. Retry to finish this scan.');
-      if (job.scan.pages >= 10000) throw new Error('The profile exceeded the scan page limit.');
-      if (list.length) job.scan.fingerprints.push(fingerprint);
-      const ids = new Set(job.posts.map(post => post.id));
-      for (const post of list) if (!ids.has(post.id)) {
-        job.posts.push(normalizePost(post, job.source)); ids.add(post.id);
-        if (!job.source.postId && (post.detail_fetched === false || post.content === undefined || post.attachments === undefined)) job.detailQueue.push(post.id);
-      }
-      job.scan.offset += 50; job.scan.pages++;
-      if (!list.length || job.source.postId) { job.scan.complete = true; job.scan.total = job.posts.length; job.status = 'ready'; }
-    }
-    job.scan.attempts = 0; job.scan.error = null; job.scan.nextAt = Date.now() + 1000;
-  } catch (error) {
-    job.scan.attempts++; job.scan.error = error instanceof Error ? error.message : 'Post discovery failed.';
-    if (error instanceof RequestError && error.retryable && job.scan.attempts < 3) job.scan.nextAt = Date.now() + delay(job.scan.attempts, error.retryAfterMs);
-    else { job.status = 'paused'; job.resumeStatus = 'scanning'; job.error = job.scan.error; }
-  }
+  await discoverPosts(job, client);
   await savePostJob(job);
   if (job.scan.complete && job.autoDownload) await startAutomaticDownload(job);
 }
-interface Transfer { state: 'transferring' | 'done'; bytes?: number; ext?: string; failure?: string; status?: number; retryAfterMs?: number }
+interface Transfer { state: 'transferring' | 'done'; bytes?: number; ext?: string; failure?: string; status?: number; retryAfterMs?: number; progress?: PostTransferProgress }
 async function reconcileTasks(job: PostJob): Promise<void> {
-  for (const task of job.tasks) if (task.status === 'transferring') {
+  let changed = false;
+  const active = job.tasks.filter(task => task.status === 'transferring'), completed: string[] = [];
+  const results = await Promise.all(active.map(task => offscreen<Transfer | null>('post-transfer-status', { jobId: job.id, recordId: task.id })));
+  for (const [index, task] of active.entries()) {
     const recordId = task.id;
-    const result = await offscreen<Transfer | null>('post-transfer-status', { jobId: job.id, recordId });
+    const result = results[index];
+    if (result?.progress && (task.progress?.updatedAt !== result.progress.updatedAt || task.progress?.receivedBytes !== result.progress.receivedBytes || task.progress?.phase !== result.progress.phase)) {
+      task.progress = result.progress; changed = true;
+    }
     if (result?.state === 'transferring') continue;
     if (result?.bytes !== undefined) {
       task.bytes = result.bytes; task.status = 'staged'; task.error = null;
@@ -253,7 +260,34 @@ async function reconcileTasks(job: PostJob): Promise<void> {
         if (fallback) Object.assign(task, fallback);
       }
     }
-    await savePostJob(job); await offscreen('post-transfer-forget', { jobId: job.id, recordId });
+    completed.push(recordId); changed = true;
+  }
+  // Commit the batch before releasing transfer results so worker restarts retain successes.
+  if (changed) await savePostJob(job);
+  await Promise.all(completed.map(recordId => offscreen('post-transfer-forget', { jobId: job.id, recordId })));
+}
+async function reconcileExtractions(job: PostJob): Promise<void> {
+  for (const task of job.tasks) if (task.extraction?.state === 'extracting') {
+    const result = await offscreen<PostExtraction | null>('post-extract-status', { jobId: job.id, recordId: task.id });
+    if (result?.state === 'extracting') continue;
+    if (!result) { task.extraction = { state: 'pending', files: [] }; await savePostJob(job); continue; }
+    if (job.destination?.kind === 'folder') {
+      result.files = await offscreen<ExtractedFile[]>('post-extract-commit', { postJob: job, recordId: task.id });
+      job.sync ||= emptySync(job); task.extraction = result;
+      recordSaved(job.sync, task, job.posts.find(post => post.id === task.postId)?.title || task.postId);
+      await savePostJob(job); await offscreen('post-folder-index', { postJob: job });
+    } else { task.extraction = result; await savePostJob(job); }
+    await offscreen('post-extract-forget', { jobId: job.id, recordId: task.id, postJob: job });
+  }
+  if (job.destination?.kind === 'folder') for (const task of job.tasks) if (task.extraction?.state === 'done' && !task.extraction.originalRemoved) {
+    await offscreen('post-extract-remove-original', { postJob: job, recordId: task.id });
+    task.extraction.originalRemoved = true; await savePostJob(job);
+  }
+  if (job.tasks.some(task => task.extraction?.state === 'extracting')) return;
+  const next = job.tasks.find(task => task.extraction?.state === 'pending' && ['staged', 'downloaded'].includes(task.status));
+  if (next) {
+    next.extraction = { state: 'extracting', files: [] }; await savePostJob(job);
+    await offscreen('post-extract-start', { postJob: job, recordId: next.id });
   }
 }
 export async function tickPosts(): Promise<boolean> {
@@ -294,16 +328,30 @@ export async function tickPosts(): Promise<boolean> {
         await savePostJob(job); return true;
       }
     }
+    try { await reconcileExtractions(job); }
+    catch (error) {
+      await offscreen('post-transfer-stop', { jobId: job.id });
+      for (const task of job.tasks) {
+        if (task.status === 'transferring') { task.status = 'queued'; task.attempts = Math.max(0, task.attempts - 1); }
+        if (task.extraction?.state === 'extracting') task.extraction = { state: 'pending', files: [] };
+      }
+      job.status = 'paused'; job.resumeStatus = 'downloading'; job.error = error instanceof Error ? error.message : 'Could not save extracted files. Check folder access and free disk space, then Resume.';
+      await savePostJob(job); return true;
+    }
     const active = job.tasks.filter(task => task.status === 'transferring').length;
     const limit = transferLimit(job, 'posts');
     // Reconciliation may have just received a 429; honor its new deadline now.
-    const next = Date.now() >= Math.max(notBefore, job.nextAt) ? job.tasks.filter(task => task.status === 'queued' && task.nextAt <= Date.now()).slice(0, Math.max(0, limit - active)) : [];
-    for (const task of next) {
-      task.status = 'transferring'; task.attempts++; await savePostJob(job);
-      await offscreen('post-transfer-start', { jobId: job.id, task, post: job.posts.find(post => post.id === task.postId), source: job.source });
+    // Let short text/image work fill and grow the pool before large source archives occupy every slot.
+    const priority = { text: 0, image: 1, file: 2 };
+    const next = Date.now() >= Math.max(notBefore, job.nextAt) ? job.tasks.filter(task => task.status === 'queued' && task.nextAt <= Date.now())
+      .sort((a, b) => priority[a.kind] - priority[b.kind]).slice(0, Math.max(0, limit - active)) : [];
+    if (next.length) {
+      for (const task of next) { task.status = 'transferring'; task.attempts++; task.progress = { receivedBytes: 0, totalBytes: null, phase: 'connecting', updatedAt: Date.now() }; }
+      job.nextAt = Date.now() + 400; await savePostJob(job);
+      await Promise.all(next.map(task => offscreen('post-transfer-start', { jobId: job.id, task, post: job.posts.find(post => post.id === task.postId), source: job.source })));
     }
-    if (next.length) { job.nextAt = Date.now() + 400; await savePostJob(job); }
     if (job.tasks.some(task => ['queued', 'transferring'].includes(task.status))) return true;
+    if (job.tasks.some(task => ['staged', 'downloaded'].includes(task.status) && task.extraction && ['pending', 'extracting'].includes(task.extraction.state))) return true;
     if (job.destination?.kind === 'folder') {
       try { await offscreen('post-folder-index', { postJob: job }); job.status = 'finished'; await offscreen('zip-clear', { jobId: job.id }).catch(() => {}); }
       catch (error) { job.status = 'paused'; job.error = error instanceof Error ? error.message : 'Could not update sync.json. Check folder access, then Resume.'; }

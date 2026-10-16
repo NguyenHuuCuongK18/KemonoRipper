@@ -21,14 +21,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button id="scan-new" class="primary full" hidden>Scan this page</button>
     <section id="work" hidden>
       <div class="progress-heading"><span id="progress-label">Discovering posts</span><strong id="percent">0%</strong></div>
-      <progress id="progress" max="100" value="0" aria-labelledby="progress-label" aria-describedby="count"></progress><p id="count" class="muted" role="status"></p><p id="summary" class="summary"></p><p id="archive-note" class="small muted" hidden></p>
+      <progress id="progress" max="100" value="0" aria-labelledby="progress-label" aria-describedby="count"></progress><p id="count" class="muted" role="status"></p><p id="transfer-progress" class="small muted" role="status" hidden></p><p id="summary" class="summary"></p><p id="archive-note" class="small muted" hidden></p>
       <fieldset id="options"><legend class="sr-only">Download options</legend><div id="quality-controls"><label for="quality">Save quality</label><select id="quality"><option value="thumbnail">Thumbnails</option><option value="full res">Full resolution</option><option id="best-quality" value="best" hidden>Best available</option></select></div>
         <div id="types" class="content-types"><label id="images-option"><input id="images" type="checkbox" checked>Images</label><label id="files-option" hidden><input id="files" type="checkbox" checked>Other files</label><label><input id="text" type="checkbox" checked>Post text</label></div>
         <label id="fallback-option" class="fallback-option" hidden><input id="fallback" type="checkbox" checked>Save thumbnail if unavailable</label><p id="quality-note" class="small muted"></p>
+        <details id="file-types" hidden><summary>File types</summary><div class="actions"><button id="all-file-types" type="button">All types</button><button id="clear-file-types" type="button">Clear types</button></div><div id="file-type-options" class="content-types"></div></details>
+        <label id="extract-option" class="fallback-option" hidden><input id="extract-archives" type="checkbox">Extract downloaded archives (ZIP, 7z, RAR, TAR)</label><p id="extract-note" class="small muted" hidden>Successful extraction keeps only the unpacked contents. If extraction fails, the compressed file is kept.</p>
         <div id="post-storage" hidden><div id="destination-label" class="small">Save to</div><div id="destination" class="destination-switch" role="radiogroup" aria-labelledby="destination-label" aria-describedby="folder-note"><label><input id="destination-folder" type="radio" name="destination" value="folder" checked><span>Creator folder</span></label><label><input id="destination-zip" type="radio" name="destination" value="zip"><span>ZIP file</span></label></div><div class="actions"><button id="choose-sync" type="button">Choose sync.json</button><button id="choose-folder" type="button">Change folder</button></div><p id="folder-note" class="small muted">Choose where to save this creator.</p></div>
       </fieldset>
       <button id="download" class="primary full" disabled>Download ZIP</button>
-      <div class="actions"><button id="pause" hidden>Pause</button><button id="resume" hidden>Resume</button><button id="retry" hidden>Retry failures</button><button id="save-zip" hidden>Save ZIP again</button><button id="cancel" hidden>Cancel</button></div>
+      <div class="actions"><button id="pause" hidden>Pause</button><button id="resume" hidden>Resume</button><button id="retry" hidden>Retry failures</button><button id="skip" hidden>Skip this error</button><button id="save-zip" hidden>Save ZIP again</button><button id="cancel" hidden>Cancel</button></div>
       <details id="post-list" hidden><summary id="post-list-label">Posts</summary><p id="post-selection-count" class="small muted"></p><fieldset id="post-picker"><legend class="sr-only">Posts to save</legend><div id="post-selection-actions" class="actions"><label><input id="all-posts" type="checkbox" checked>All posts</label><button id="clear-post-selection" type="button">Clear selection</button></div><ul id="posts"></ul></fieldset><button id="more" hidden>Show more</button></details>
       <details id="more-options"><summary>More options</summary><p id="transfer-policy" class="small muted"></p><div class="actions"><button id="rescan">Scan again</button><button id="import-sync" type="button">Import history only</button><button id="manifest">Export manifest</button></div><input id="sync-file" type="file" accept=".json,application/json" hidden></details>
     </section><details id="recent" hidden><summary>Recent jobs</summary><ul id="jobs"></ul></details>
@@ -52,6 +54,7 @@ let cleanup: { scope: 'all' } | { scope: 'job'; jobId: string } | { scope: 'cach
 let cacheData: CacheList = { caches: [], bytes: 0 }, cacheLimit = 50;
 let cacheRequest: Promise<void> | null = null, postRowsKey = '';
 let postErrorNotice = '';
+let excludedFileTypes = new Set<string>(), fileTypesKey = '';
 async function send<T>(message: ServiceCommand): Promise<T> {
   const reply: Reply<T> = await chrome.runtime.sendMessage(message);
   if (!reply?.ok) throw new Error(reply?.error || 'The archive service did not respond.'); return reply.data;
@@ -70,10 +73,25 @@ function progress(label: string, value: number | null, count: string): void {
   else { bar.value = Math.max(0, Math.min(100, value)); el('percent').textContent = `${Math.floor(bar.value)}%`; }
   el('count').textContent = count;
 }
-function selection(): PostSelection { return { quality: 'full res', fallbackToThumbnail: check('fallback').checked && check('images').checked, images: check('images').checked, files: check('files').checked, text: check('text').checked }; }
+function selection(): PostSelection { return { quality: 'full res', fallbackToThumbnail: check('fallback').checked && check('images').checked, images: check('images').checked, files: check('files').checked, text: check('text').checked, excludedFileTypes: [...excludedFileTypes].sort(), extractArchives: check('extract-archives').checked }; }
+function renderFileTypes(view: PostView): void {
+  const key = JSON.stringify([view.fileTypes, [...excludedFileTypes].sort()]); if (key === fileTypesKey) return; fileTypesKey = key;
+  el('file-type-options').replaceChildren(...view.fileTypes.map(({ type, count }) => {
+    const label = document.createElement('label'), input = document.createElement('input');
+    input.type = 'checkbox'; input.dataset.fileType = type; input.checked = !excludedFileTypes.has(type);
+    label.append(input, `${type === 'unknown' ? 'Unknown' : '.' + type} (${count})`); return label;
+  }));
+}
+el('file-type-options').onchange = event => {
+  const input = event.target as HTMLInputElement, type = input.dataset.fileType; if (!type) return;
+  if (input.checked) excludedFileTypes.delete(type); else excludedFileTypes.add(type);
+};
+el('all-file-types').onclick = () => { excludedFileTypes.clear(); if (post) renderFileTypes(post); };
+el('clear-file-types').onclick = () => { for (const item of post?.fileTypes || []) excludedFileTypes.add(item.type); if (post) renderFileTypes(post); };
 function options(): void {
   const thumbnail = select('quality').value === 'thumbnail';
   el('types').hidden = service !== 'posts'; el('files-option').hidden = service !== 'posts' || !post?.totals.files;
+  el('file-types').hidden = service !== 'posts'; el('extract-option').hidden = service !== 'posts'; el('extract-note').hidden = service !== 'posts';
   el('images-option').hidden = service === 'posts' && !post?.totals.images;
   el('quality-controls').hidden = service === 'posts'; el('best-quality').hidden = service !== 'discord';
   el('fallback-option').hidden = service !== 'posts' || !post?.totals.images;
@@ -247,8 +265,9 @@ el('download').onclick = () => {
     else { if (discord?.job.destination?.kind !== 'zip') await send({ type: 'DESTINATION', jobId: selected, kind: 'zip' }); await send({ type: 'DISCORD_DOWNLOAD', jobId: selected, quality: select('quality').value as 'thumbnail' | 'full res' | 'best' }); }
   });
 };
-for (const action of ['pause', 'resume', 'retry', 'save-zip', 'cancel'] as const) el(action).onclick = () => void run(async () => {
+for (const action of ['pause', 'resume', 'retry', 'skip', 'save-zip', 'cancel'] as const) el(action).onclick = () => void run(async () => {
   if (action === 'resume' && service === 'posts' && post?.job.error?.startsWith('Folder access is required.')) { await chooseFolder(); return; }
+  if (action === 'skip') { if (selected && service === 'posts') await send({ type: 'POST_ACTION', jobId: selected, action }); return; }
   if (selected) await send(service === 'posts' ? { type: 'POST_ACTION', jobId: selected, action } : { type: 'ACTION', jobId: selected, action });
 });
 el('clear-cache').onclick = () => { if (selected) confirmCacheRemoval(selected, el('title').textContent || 'this job'); };
@@ -260,7 +279,8 @@ function common(status: string, archive: Job['archive'], failed: number, canDown
   el('transfer-policy').textContent = `Download speed adjusts automatically. Current limit: ${limit} ${limit === 1 ? 'file' : 'files'} at once.`;
   el<HTMLFieldSetElement>('options').disabled = active || saving; el<HTMLButtonElement>('download').disabled = !canDownload || active || saving;
   el('pause').hidden = !active; el('resume').hidden = status !== 'paused'; el('cancel').hidden = !active && status !== 'paused' && !saving;
-  el('retry').hidden = !failed && !(service === 'posts' ? post?.job.scan.error : discord?.job.channels.some(channel => channel.coverage === 'incomplete'));
+  el('skip').hidden = service !== 'posts' || !post?.canSkipError;
+  el('retry').hidden = !failed && !(service === 'posts' ? post?.job.scan.error || post?.totals.discoveryFailures : discord?.job.channels.some(channel => channel.coverage === 'incomplete'));
   el<HTMLButtonElement>('retry').disabled = active || saving;
   el('save-zip').hidden = !archive || archive.cacheCleared === true || !['ready', 'saved'].includes(archive.state); el('clear-cache').hidden = !archive || archive.cacheCleared === true;
   el('archive-note').hidden = !archive?.cacheCleared;
@@ -281,17 +301,28 @@ function downloadProgress(archive: Job['archive'], saved: number, processed: num
 }
 function renderPost(view: PostView): void {
   const { job, totals } = view;
+  const transferText = job.status === 'downloading' ? view.activeTransfers.slice(0, 3).map(({ name, progress }) => {
+    if (!progress || progress.phase === 'connecting') return `Connecting: ${name}`;
+    if (progress.phase === 'validating') return `Checking: ${name} · ${formatBytes(progress.receivedBytes)}`;
+    return `${name}: ${formatBytes(progress.receivedBytes)}${progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ''}${Date.now() - progress.updatedAt > 30_000 ? ' · Waiting for data' : ''}`;
+  }).join(' · ') || (view.retryAt > Date.now() ? `Waiting to retry in ${Math.ceil((view.retryAt - Date.now()) / 1000)} seconds.` : '') : '';
+  el('transfer-progress').textContent = transferText; el('transfer-progress').hidden = !transferText;
   if (sourceUrl !== job.sourceUrl) { sourceUrl = job.sourceUrl; select('scope').value = job.source.postId ? 'post' : 'profile'; }
   el('title').textContent = job.source.postId ? view.posts[0]?.title || 'This post' : job.creatorName;
   el('subtitle').textContent = `${job.source.platform === 'fanbox' ? 'Pixiv Fanbox' : 'Patreon'} · ${job.source.postId ? job.creatorName : 'Entire profile'}`;
-  const optionsKey = job.id + (job.destination?.kind === 'folder' ? job.destination.directoryId : 'zip');
-  if (optionsJob !== optionsKey) { optionsJob = optionsKey; check('fallback').checked = job.selection.fallbackToThumbnail ?? true; check('images').checked = job.selection.images; check('files').checked = job.selection.files; check('text').checked = job.selection.text; setDestination(job.destination?.kind || 'zip'); }
+  const optionsKey = job.id + (job.destination?.kind === 'folder' ? job.destination.directoryId : 'zip') + JSON.stringify(job.selection);
+  if (optionsJob !== optionsKey) { optionsJob = optionsKey; check('fallback').checked = job.selection.fallbackToThumbnail ?? true; check('images').checked = job.selection.images; check('files').checked = job.selection.files; check('text').checked = job.selection.text; check('extract-archives').checked = job.selection.extractArchives ?? false; excludedFileTypes = new Set(job.selection.excludedFileTypes || []); setDestination(job.destination?.kind || 'zip'); }
+  renderFileTypes(view);
   if (!job.scan.complete) progress(job.status === 'paused' ? 'Discovery paused' : job.status === 'cancelled' ? 'Discovery cancelled' : 'Discovering posts', totals.total ? Math.min(99, totals.discovered / totals.total * 100) : null, `Discovered: ${totals.discovered}/${totals.total ?? '…'} posts`);
   else if (job.archive) downloadProgress(job.archive, totals.saved, totals.processed, totals.selected, totals.failed);
   else if (totals.selected) progress(job.status === 'finished' ? 'Saved' : job.status === 'paused' ? 'Download paused' : job.status === 'cancelled' ? 'Download cancelled' : 'Saving to folder', totals.processed / totals.selected * 100, `Saved: ${totals.saved}/${totals.selected} files${totals.synced ? ` · ${totals.synced} already saved` : ''}${totals.failed ? ` · ${totals.failed} unavailable` : ''}`);
-  else progress('Ready to save', 100, `Discovered: ${totals.posts}/${totals.posts} posts`);
+  else progress(totals.discoveryFailures ? 'Ready to save available posts' : 'Ready to save', 100, `Discovered: ${totals.posts}/${totals.total ?? totals.posts} posts`);
   el('summary').textContent = [totals.images ? `${totals.images} images` : '', totals.files ? `${totals.files} other files` : ''].filter(Boolean).join(' · ');
   if (totals.thumbnails) el('summary').textContent += ` · ${totals.thumbnails} saved as thumbnails`;
+  if (totals.extracting) el('summary').textContent += ' · Extracting archives';
+  if (totals.extracted) el('summary').textContent += ` · ${totals.extracted} unpacked files`;
+  if (totals.extractionFailures) el('summary').textContent += ` · ${totals.extractionFailures} extraction errors (originals kept; see failures.json)`;
+  if (totals.discoveryFailures) el('summary').textContent += `${el('summary').textContent ? ' · ' : ''}${totals.discoveryFailures} discovery errors. Available content can be saved; details are in failures.json.`;
   if (totals.syncPosts && !totals.selected) el('summary').textContent += `${el('summary').textContent ? ' · ' : ''}${totals.newPosts} new posts`;
   el('post-list').hidden = !view.posts.length; el('post-list-label').textContent = `Posts (${view.posts.length < totals.posts ? view.posts.length + '/' : ''}${totals.posts})`;
   el('post-selection-actions').hidden = !!job.source.postId;
@@ -318,9 +349,10 @@ function renderPost(view: PostView): void {
   if (job.error) notice(job.error);
   else if (postErrorNotice && el('notice').textContent === postErrorNotice) notice('');
   postErrorNotice = job.error || '';
-  common(job.status, job.archive, totals.retryable, job.scan.complete && totals.selectedPosts > 0, job.transferPolicy);
+  common(job.status, job.archive, totals.retryable, job.scan.complete && (totals.selectedPosts > 0 || totals.discoveryFailures > 0 && view.allPostsSelected), job.transferPolicy);
 }
 function renderDiscord(view: DiscordView): void {
+  el('transfer-progress').hidden = true;
   const { job, totals } = view;
   el('title').textContent = job.serverName || 'Discord archive'; el('subtitle').textContent = job.channels.length === 1 ? job.channels[0].channelName || 'Current channel' : 'Entire server';
   if (optionsJob !== job.id) { optionsJob = job.id; select('quality').value = job.mode === 'original' ? 'full res' : job.mode; }

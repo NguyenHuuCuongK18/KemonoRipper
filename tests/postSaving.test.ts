@@ -141,6 +141,35 @@ describe('sortable post folders and sync compatibility', () => {
 });
 
 describe('optional thumbnail fallback', () => {
+  it('restarts extraction when retrying a ZIP whose temporary extracted contents were cleared', async () => {
+    const value = job(); value.tasks = createTasks(value, selection).slice(0, 1);
+    value.tasks[0].status = 'downloaded'; value.tasks[0].bytes = 4;
+    value.tasks[0].extraction = { state: 'done', files: [{ id: 'extracted', path: 'some/file.txt', bytes: 1 }] };
+    value.status = 'finished'; value.archive = { state: 'saved', filename: 'post.zip', blobUrl: null, downloadId: 99, bytes: 12, entries: 2, progress: 2, total: 2, error: null, cacheCleared: true };
+    await savePostJob(value);
+    await postCommand({ type: 'POST_ACTION', jobId: value.id, action: 'retry' });
+    expect((await getPostJob(value.id))!.tasks[0]).toMatchObject({ status: 'queued', bytes: null, extraction: { state: 'pending', files: [] } });
+  });
+  it('finishes saving the available text when an attachment is missing, retaining its failure', async () => {
+    const value = job(); value.status = 'downloading'; value.destination = { kind: 'folder', directoryId: 'folder', name: 'Creator' };
+    value.tasks = createTasks(value, selection);
+    value.tasks[0].status = 'failed'; value.tasks[0].error = 'File HTTP 404';
+    value.tasks[1].status = 'staged'; value.tasks[1].bytes = 20;
+    await savePostJob(value);
+    mocks.offscreen.mockImplementation(async (action: string) => action === 'post-folder-write' ? { path: value.tasks[1].path, bytes: 20 } : null);
+    await tickPosts();
+    const saved = (await getPostJob(value.id))!;
+    expect(saved.status).toBe('finished'); expect(saved.tasks[0]).toMatchObject({ status: 'failed', error: 'File HTTP 404' });
+    expect(saved.tasks[1].status).toBe('downloaded'); expect(saved.sync!.posts[0].files.map(file => file.kind)).toEqual(['text']);
+    expect(mocks.offscreen).toHaveBeenCalledWith('post-folder-index', { postJob: expect.objectContaining({ status: 'finished' }) });
+  });
+  it('allows exporting an error report when an unavailable single post has no savable files', async () => {
+    const value = job(); value.posts = [];
+    value.scan.failures = [{ kind: 'post', postId: fixture.id, offset: 0, status: 404, error: 'API HTTP 404.', attempts: 1, at: '' }];
+    await savePostJob(value);
+    await postCommand({ type: 'POST_DOWNLOAD', jobId: value.id, selection, destination: 'zip' });
+    expect(await getPostJob(value.id)).toMatchObject({ status: 'downloading', tasks: [], archive: { state: 'pending' } });
+  });
   it('saves only the original and text when an original is available', () => {
     const tasks = createTasks(job(), selection);
     expect(tasks).toHaveLength(2);

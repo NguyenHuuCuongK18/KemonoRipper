@@ -1,6 +1,6 @@
 {
   "name": "kemono-pawchive-archive-ripper",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Local-first Discord and Patreon/Fanbox post archiver for Kemono and Pawchive",
@@ -12,10 +12,12 @@
     "test:browser": "node scripts/browser-test.mjs",
     "test:acceptance": "node scripts/media-acceptance.mjs",
     "test:selection": "node scripts/selection-acceptance.mjs",
+    "test:tolerance": "node scripts/tolerance-acceptance.mjs",
+    "test:settings": "node scripts/settings-acceptance.mjs",
     "recon": "node scripts/recon.mjs",
     "package": "node scripts/package.mjs",
     "release:verify": "node scripts/verify-release.mjs",
-    "release:check": "npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run package && npm run release:verify"
+    "release:check": "npm run check && npm run test:browser && npm run test:acceptance && npm run test:selection && npm run test:tolerance && npm run test:settings && npm run package && npm run release:verify"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.24",
@@ -27,8 +29,11 @@
     "vite": "^7.1.0",
     "vitest": "^5.0.3"
   },
-  "engines": { "node": "^22.12.0 || ^24.0.0 || >=26.0.0" },
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
   "dependencies": {
-    "@zip.js/zip.js": "2.23.0"
+    "@zip.js/zip.js": "2.23.0",
+    "libarchive-wasm": "1.2.0"
   }
 }

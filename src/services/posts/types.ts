@@ -11,28 +11,37 @@ export interface ApiPost {
 }
 export interface PostMedia { id: string; name: string; path: string; kind: 'image' | 'file'; thumbnailUrl: string | null; originalUrl: string | null }
 export interface ArchivedPost { id: string; title: string; content: string; published: string | null; hasFull: boolean | null; media: PostMedia[]; embed: unknown }
-export interface PostSelection { quality: 'thumbnail' | 'full res' | 'both'; images: boolean; files: boolean; text: boolean; fallbackToThumbnail?: boolean }
+export interface PostSelection { quality: 'thumbnail' | 'full res' | 'both'; images: boolean; files: boolean; text: boolean; fallbackToThumbnail?: boolean; excludedFileTypes?: string[]; extractArchives?: boolean }
+export interface ExtractedFile { id: string; path: string; bytes: number }
+export interface PostExtraction { state: 'pending' | 'extracting' | 'done' | 'failed'; files: ExtractedFile[]; error?: string; originalRemoved?: boolean }
+export interface PostTransferProgress { receivedBytes: number; totalBytes: number | null; phase: 'connecting' | 'downloading' | 'validating'; updatedAt: number }
 export interface PostTask {
   id: string; postId: string; quality: Quality; kind: 'image' | 'file' | 'text'; url: string | null; path: string;
   status: 'queued' | 'transferring' | 'staged' | 'downloaded' | 'failed' | 'unavailable';
   bytes: number | null; attempts: number; nextAt: number; error: string | null;
+  progress?: PostTransferProgress;
+  extraction?: PostExtraction;
   synced?: boolean;
   fallbackUrl?: string;
   fallback?: boolean;
   fallbackReason?: string;
   fallbackChecked?: boolean;
 }
-export interface PostSyncFile { id: string; quality: Quality; kind: PostTask['kind']; path: string; bytes: number }
+export interface PostSyncFile { id: string; quality: Quality; kind: PostTask['kind']; path: string; bytes: number; extracted?: ExtractedFile[]; originalKept?: false }
 export interface PostSyncIndex {
   format: 'archive-ripper-post-sync'; version: 1;
   source: Omit<PostScope, 'postId'>; creatorName: string; updatedAt: string; selection: PostSelection;
   posts: { id: string; title: string; files: PostSyncFile[] }[];
 }
 export type PostDestination = { kind: 'zip' } | { kind: 'folder'; directoryId: string; name: string };
+export interface PostScanFailure {
+  kind: 'page' | 'post'; offset: number; postId: string | null; error: string; status: number | null; attempts: number; at: string;
+}
 export interface PostJob {
   id: string; service: 'posts'; source: PostScope; sourceUrl: string; creatorName: string; createdAt: string; updatedAt: string;
   status: 'scanning' | 'ready' | 'downloading' | 'paused' | 'cancelled' | 'finished'; resumeStatus: 'scanning' | 'downloading';
-  selection: PostSelection; scan: { offset: number; pages: number; total: number | null; complete: boolean; error: string | null; attempts: number; nextAt: number; fingerprints: string[] };
+  selection: PostSelection; scan: { offset: number; pages: number; total: number | null; complete: boolean; error: string | null; attempts: number; nextAt: number; fingerprints: string[];
+    failures?: PostScanFailure[]; retryQueue?: PostScanFailure[]; retrying?: boolean; consecutiveFailures?: number; errorStatus?: number | null };
   posts: ArchivedPost[]; detailQueue: string[]; tasks: PostTask[]; archive: Job['archive']; nextAt: number; error: string | null;
   destination?: PostDestination; sync?: PostSyncIndex;
   autoDownload?: PostSelection;
@@ -47,4 +56,4 @@ export type PostCommand =
   | { type: 'POST_SYNC_IMPORT'; jobId: string; json: unknown }
   | { type: 'POST_SYNC_CONNECT'; jobId: string; directoryId: string; name: string }
   | { type: 'POST_FOLDER'; jobId: string; directoryId: string; name: string }
-  | { type: 'POST_ACTION'; jobId: string; action: 'pause' | 'resume' | 'cancel' | 'retry' | 'save-zip' | 'clear-cache' | 'rescan' };
+  | { type: 'POST_ACTION'; jobId: string; action: 'pause' | 'resume' | 'cancel' | 'retry' | 'skip' | 'save-zip' | 'clear-cache' | 'rescan' };

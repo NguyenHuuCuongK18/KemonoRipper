@@ -46,6 +46,12 @@ export async function stageStream(jobId: string, recordId: string, input: Readab
   try { await input.pipeTo(output, { signal }); return await handle.getFile(); }
   catch (error) { await output.abort().catch(() => {}); throw error; }
 }
+export async function stageWithWriter(jobId: string, recordId: string, write: (output: FileSystemWritableFileStream) => Promise<void>): Promise<File> {
+  const directory = await jobDirectory(jobId, true), handle = await directory.getFileHandle(await cacheName(recordId), { create: true });
+  const output = await handle.createWritable();
+  try { await write(output); await output.close(); return await handle.getFile(); }
+  catch (error) { await output.abort().catch(() => {}); throw error; }
+}
 export async function stagedMatches(jobId: string, record: Pick<MediaRecord, 'id' | 'sha256' | 'bytes'>): Promise<boolean> {
   try {
     const file = await stagedFile(jobId, record.id);

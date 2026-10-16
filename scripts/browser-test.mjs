@@ -31,17 +31,19 @@ try {
   const profileUrl = 'https://pawchive.pw/fanbox/user/4862787';
   const path = (letter, ext) => `/${letter.repeat(2)}/${letter.repeat(2)}/${letter.repeat(64)}.${ext}`;
   const primary = { id: '1', user: '4862787', service: 'fanbox', title: 'Sample post', content: '<p>Saved text &amp; links.</p><script>bad()</script>', published: '2026-10-01T01:02:03', detail_fetched: true, has_full: true, file: { name: 'drawing.png', path: path('a','png'), node: 2 }, attachments: [{ name: 'source.psd', path: path('b','psd'), node: 2 }] };
-  const old = { ...primary, id: '2', title: 'Thumbnail-only post', has_full: false, file: { name: 'old.png', path: path('c','png') }, attachments: [] };
+  const old = { ...primary, id: 'p-1237087', title: 'Thumbnail-only post', has_full: false, file: { name: 'old.png', path: path('c','png') }, attachments: [] };
   const posts = [primary, old, ...Array.from({ length: 49 }, (_, i) => ({ ...primary, id: String(i + 3), title: `Text post ${i + 3}`, file: {}, attachments: [] }))];
   await worker.evaluate(({ posts, primary }) => {
-    const nativeFetch = fetch; globalThis.__requests = []; globalThis.__downloads = []; globalThis.__posts = posts;
+    const nativeFetch = fetch; globalThis.__requests = []; globalThis.__downloads = []; globalThis.__posts = posts; globalThis.__invalidPages = 0;
     globalThis.fetch = async (input, init) => {
       const url = String(input); if (!url.includes('/api/v1/')) return nativeFetch(input, init); globalThis.__requests.push(url);
       if (url.endsWith('/profile')) return new Response(JSON.stringify({ id: '4862787', name: 'Sample creator' }));
       if (url.includes('/post/')) return new Response(JSON.stringify(primary));
       if (url.includes('/discord/server/')) return new Response(JSON.stringify({ id: '123', name: 'Sample server', channels: [{ id: '456', name: 'Channel', post_count: 1 }] }));
       if (url.includes('/discord/channel/')) return new Response(JSON.stringify(new URL(url).searchParams.get('o') === '0' ? [{ id: '789', server: '123', channel: '456', attachments: [{ name: 'image.png', path: primary.file.path }] }] : []));
-      const offset = Number(new URL(url).searchParams.get('o')); return new Response(JSON.stringify(posts.slice(offset, offset + 50)));
+      const offset = Number(new URL(url).searchParams.get('o'));
+      if (offset === 50 && globalThis.__invalidPages++ < 2) return new Response('[{"id":');
+      return new Response(JSON.stringify(posts.slice(offset, offset + 50)));
     };
     const download = chrome.downloads.download.bind(chrome.downloads); chrome.downloads.download = async options => { globalThis.__downloads.push(options); return download({ ...options, saveAs: false }); };
   }, { posts, primary });
@@ -53,6 +55,9 @@ try {
   let frame = await waitFor(() => page.frames().find(frame => frame.url().includes('/overlay/index.html')));
   await frame.locator('#title').waitFor();
   await waitFor(async () => (await frame.locator('#count').textContent()).includes('51/51'));
+  const retriedPages = await worker.evaluate(() => globalThis.__requests.filter(url => new URL(url).searchParams.get('o') === '50'));
+  assert.deepEqual(retriedPages, [profileUrl.replace('pw/', 'pw/api/v1/') + '?o=50', profileUrl.replace('pw/', 'pw/api/v1/') + '/posts?o=50', profileUrl.replace('pw/', 'pw/api/v1/') + '?o=50']);
+  console.log('PASS: incomplete JSON on both list routes retries the same page automatically and preserves discovered posts.');
   assert.equal(await frame.locator('#post-list').getAttribute('open'), null);
   assert.equal(await frame.locator('#posts li').count(), 51);
   await frame.evaluate(() => { globalThis.__firstPostRow = document.querySelector('#posts li'); });
@@ -66,7 +71,7 @@ try {
   await waitFor(async () => (await cdp.send('Target.getTargets')).targetInfos.some(target => target.url === offscreenUrl));
   const fixture = (await readFile('tests/fixtures/bird_01.thumbnail.png')).toString('base64');
   const fileBytes = [56, 66, 80, 83, 0, 1, 10, 20, 30];
-  await targetEvaluate(offscreenUrl, `(() => { const image = Uint8Array.from(atob(${JSON.stringify(fixture)}),c=>c.charCodeAt(0)); globalThis.__mediaRequests=[]; const nativeFetch=fetch; globalThis.fetch=async(input,init)=>{const url=String(input); if(!url.startsWith('https:'))return nativeFetch(input,init); globalThis.__mediaRequests.push(url); const bytes=url.includes('.psd')?new Uint8Array(${JSON.stringify(fileBytes)}):image; let timer; const stream=new ReadableStream({start(controller){controller.enqueue(bytes.slice(0,4));timer=setTimeout(()=>{controller.enqueue(bytes.slice(4));controller.close();},900);},cancel(){clearTimeout(timer);}}); return new Response(stream,{headers:{'content-type':url.includes('.psd')?'application/octet-stream':'image/jpeg'}});}; return true; })()`);
+  await targetEvaluate(offscreenUrl, `(() => { const image = Uint8Array.from(atob(${JSON.stringify(fixture)}),c=>c.charCodeAt(0)); globalThis.__mediaRequests=[]; const nativeFetch=fetch; globalThis.fetch=async(input,init)=>{const url=String(input); if(!url.startsWith('https:'))return nativeFetch(input,init); globalThis.__mediaRequests.push(url); const bytes=url.includes('.psd')?new Uint8Array(${JSON.stringify(fileBytes)}):image; let timer; const stream=new ReadableStream({start(controller){controller.enqueue(bytes.slice(0,4));timer=setTimeout(()=>{controller.enqueue(bytes.slice(4));controller.close();},3000);},cancel(){clearTimeout(timer);}}); return new Response(stream,{headers:{'content-type':url.includes('.psd')?'application/octet-stream':'image/jpeg'}});}; return true; })()`);
   const send = (message) => frame.evaluate(async message => { const reply=await chrome.runtime.sendMessage(message); if(!reply.ok)throw new Error(reply.error); return reply.data; },message);
   let jobId = (await send({ type: 'SERVICE_JOBS' }))[0].id;
   await frame.locator('#local-data > summary').click();
@@ -89,6 +94,9 @@ try {
   // Retain compatibility coverage for pre-existing jobs with explicit Both selection.
   await send({ type: 'POST_DOWNLOAD', jobId, selection: { quality: 'both', images: true, files: true, text: false }, destination: 'zip' });
   await waitFor(async () => (await targetEvaluate(offscreenUrl, 'globalThis.__mediaRequests.length')) > 0);
+  await waitFor(async () => (await frame.locator('#transfer-progress').textContent()).includes(' B'));
+  assert.equal((await send({ type: 'POST_DETAIL', jobId })).totals.saved, 0);
+  console.log('PASS: active filenames and received bytes update before a whole file finishes, while pause remains responsive.');
   await frame.locator('#pause').click();
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId })).job.status === 'paused');
   await frame.locator('#resume').click();
@@ -105,6 +113,7 @@ try {
   assert(entries.every(entry => entry.filename.startsWith('fanbox_4862787_Sample creator/')));
   const syncEntry = entries.find(entry => entry.filename.endsWith('/sync.json'));
   const syncIndex = JSON.parse(new TextDecoder().decode(await syncEntry.getData(new Uint8ArrayWriter())));
+  assert(syncIndex.posts.some(post => post.id === old.id));
   const manifestEntry = entries.find(entry => entry.filename.endsWith('/manifest.json'));
   const legacyManifest = JSON.parse(new TextDecoder().decode(await manifestEntry.getData(new Uint8ArrayWriter())));
   legacyManifest.files.forEach(file => { file.path = 'ArchiveRoot/' + file.path.replace('/2026-10-01_', '/'); });
@@ -185,6 +194,7 @@ try {
   assert.equal((await worker.evaluate(() => chrome.downloads.search({}))).length, 2);
   const readFolderIndex = () => targetEvaluate(offscreenUrl, `(async()=>{const directory=await(await navigator.storage.getDirectory()).getDirectoryHandle('creator-sync-test');return JSON.parse(await(await(await directory.getFileHandle('sync.json')).getFile()).text());})()`);
   let savedIndex = await readFolderIndex(); assert.equal(savedIndex.posts.length, 3); assert.equal(savedIndex.posts.flatMap(post => post.files).length, 6); assert(savedIndex.posts.every(post => post.files.every(file => !file.path.startsWith('ArchiveRoot/') && !file.path.startsWith('fanbox/'))));
+  assert(savedIndex.posts.some(post => post.id === old.id));
   assert(savedIndex.posts.find(post => post.id === '1').files.every(file => file.path.split('/')[1].startsWith('1_')));
   assert(savedIndex.posts.find(post => post.id === '52').files.every(file => file.path.split('/')[1].startsWith('2026-10-01_52_')));
   const connectedDestination = (await send({ type: 'POST_DETAIL', jobId })).job.destination;
@@ -283,7 +293,7 @@ try {
   await waitFor(async () => (await send({ type: 'POST_DETAIL', jobId: wrappedJobId })).job.status === 'finished');
   const wrapperTree = await targetEvaluate(offscreenUrl, `(async()=>{const parent=await(await navigator.storage.getDirectory()).getDirectoryHandle('new-save-location');const root=[];for await(const entry of parent.values())root.push(entry.name);const creator=await parent.getDirectoryHandle('fanbox_4862787_Sample creator');const children=[];for await(const entry of creator.values())children.push(entry.name);return{root,children,index:JSON.parse(await(await(await creator.getFileHandle('sync.json')).getFile()).text())};})()`);
   assert.deepEqual(wrapperTree.root, ['fanbox_4862787_Sample creator']);
-  assert.deepEqual(wrapperTree.children.sort(), ['failures.json', 'full res', 'sync.json']);
+  assert.deepEqual(wrapperTree.children.sort(), ['failures.json', 'full res', 'settings.json', 'sync.json']);
   assert.equal(wrapperTree.index.posts[0].files.length, 3);
   assert(wrapperTree.index.posts[0].files.every(file => file.path.startsWith('full res/2026-10-01_1_Sample post/')));
   await newPicker.close();

@@ -20,7 +20,7 @@ try {
   }
   await walk('dist');
   assert.deepEqual(entries.map(entry => entry.filename).sort(), names.sort(), 'Package must contain exactly the build output');
-  for (const name of ['manifest.json', 'background.js', 'content.js', 'offscreen/index.html', 'overlay/index.html', 'folder/index.html', 'zip.js-LICENSE.txt']) assert(names.includes(name), `Missing release file: ${name}`);
+  for (const name of ['manifest.json', 'background.js', 'content.js', 'extract-worker.js', 'libarchive.wasm', 'licenses/libarchive-wasm-LICENSE.txt', 'licenses/libarchive-COPYING.txt', 'offscreen/index.html', 'overlay/index.html', 'folder/index.html', 'zip.js-LICENSE.txt']) assert(names.includes(name), `Missing release file: ${name}`);
   for (const entry of entries) {
     assert(!/(?:^|\/)(?:node_modules|tests|\.git|\.env)(?:\/|$)/.test(entry.filename), 'Development/private files must stay out of the release');
     const bytes = await entry.getData(new Uint8ArrayWriter(), { checkSignature: true });
